@@ -13,10 +13,12 @@ public class SettingsProvider extends ContentProvider {
     public static final String K_USE_THEME = "use_theme";
     public static final String K_COLOR = "color";
     public static final String K_OUTLINE = "outline";
+    public static final String K_TRAIL = "trail";
 
     public static final boolean D_USE_THEME = true;
     public static final int D_COLOR = 0xFFFFFFFF;
     public static final int D_OUTLINE = 0;
+    public static final int D_TRAIL = 50;
 
     @Override
     public boolean onCreate() {
@@ -31,6 +33,7 @@ public class SettingsProvider extends ContentProvider {
         b.putBoolean(K_USE_THEME, sp.getBoolean(K_USE_THEME, D_USE_THEME));
         b.putInt(K_COLOR, sp.getInt(K_COLOR, D_COLOR));
         b.putInt(K_OUTLINE, sp.getInt(K_OUTLINE, D_OUTLINE));
+        b.putInt(K_TRAIL, sp.getInt(K_TRAIL, D_TRAIL));
         return b;
     }
 

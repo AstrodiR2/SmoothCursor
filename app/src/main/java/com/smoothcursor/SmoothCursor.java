@@ -19,8 +19,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class SmoothCursor implements IXposedHookLoadPackage {
 
-    private static final float TAU_LEAD_MS = 25f;
-    private static final float TAU_TRAIL_MS = 90f;
     private static final int CURSOR_ALPHA = 200;
     private static final float Y_SHIFT_CELLS = 0f;
 
@@ -32,6 +30,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static volatile boolean cfgUseTheme = true;
     private static volatile int cfgColor = 0xFFFFFFFF;
     private static volatile int cfgOutline = 0;
+    private static volatile int cfgTrail = 50;
     private static volatile boolean fetching = false;
     private static long lastFetchMs = -100000;
 
@@ -42,7 +41,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
 
     private static final float[] cx = new float[4];
     private static final float[] cy = new float[4];
-    private static final float[] tau = {TAU_LEAD_MS, TAU_LEAD_MS, TAU_LEAD_MS, TAU_LEAD_MS};
+    private static final float[] tau = {55f, 55f, 55f, 55f};
     private static final float[] SX = {-1f, 1f, 1f, -1f};
     private static final float[] SY = {-1f, -1f, 1f, 1f};
 
@@ -63,7 +62,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!PKG.equals(lpparam.packageName)) return;
         ClassLoader cl = lpparam.classLoader;
-        XposedBridge.log("SmoothCursor v4: loaded");
+        XposedBridge.log("SmoothCursor v5: loaded");
 
         try {
             Class<?> viewCls = XposedHelpers.findClass("com.termux.view.TerminalView", cl);
@@ -91,7 +90,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 rendCls = XposedHelpers.findClassIfExists("com.termux.terminal.TerminalRenderer", cl);
             }
             if (rendCls == null) {
-                XposedBridge.log("SmoothCursor v4: TerminalRenderer NOT FOUND");
+                XposedBridge.log("SmoothCursor v5: TerminalRenderer NOT FOUND");
                 return;
             }
 
@@ -108,14 +107,14 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     try {
                         drawCursor(p);
                     } catch (Throwable t) {
-                        XposedBridge.log("SmoothCursor v4: draw error: " + t);
+                        XposedBridge.log("SmoothCursor v5: draw error: " + t);
                     }
                 }
             });
 
-            XposedBridge.log("SmoothCursor v4: hooks installed, renderer=" + rendCls.getName());
+            XposedBridge.log("SmoothCursor v5: hooks installed, renderer=" + rendCls.getName());
         } catch (Throwable t) {
-            XposedBridge.log("SmoothCursor v4: init failed: " + t);
+            XposedBridge.log("SmoothCursor v5: init failed: " + t);
         }
     }
 
@@ -135,10 +134,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     boolean ut = b.getBoolean("use_theme", true);
                     int c = b.getInt("color", 0xFFFFFFFF);
                     int o = b.getInt("outline", 0);
-                    boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline;
+                    int tr = b.getInt("trail", 50);
+                    boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline || tr != cfgTrail;
                     cfgUseTheme = ut;
                     cfgColor = c;
                     cfgOutline = o;
+                    cfgTrail = tr;
                     if (changed) v.postInvalidate();
                 }
             } catch (Throwable ignored) {
@@ -169,7 +170,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
 
         if (!logged) {
             logged = true;
-            XposedBridge.log("SmoothCursor v4: spacing=" + cellH + " ascent=" + ascent
+            XposedBridge.log("SmoothCursor v5: spacing=" + cellH + " ascent=" + ascent
                     + " yOff=" + yOff + " cellW=" + cellW);
         }
 
@@ -244,6 +245,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
     }
 
+    // Передние углы получают короткое время, задние длинное. Ползунок шлейфа тянет оба.
     private static void retarget(float[] tx, float[] ty, float cellW, int cellH) {
         float ccx = 0, ccy = 0, tcx = 0, tcy = 0;
         for (int i = 0; i < 4; i++) {
@@ -254,11 +256,15 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         float dy = (tcy - ccy) / 4f * cellH;
         float len = (float) Math.sqrt(dx * dx + dy * dy);
 
+        float s = cfgTrail / 100f;
+        float lead = 30f + 50f * s;
+        float trail = lead * (1.3f + 2.2f * s);
+
         for (int i = 0; i < 4; i++) {
             float a = 0f;
             if (len > 1e-3f) a = ((SX[i] * dx + SY[i] * dy) / len) * 0.70710678f;
             float t = (1f - a) / 2f;
-            tau[i] = TAU_LEAD_MS + (TAU_TRAIL_MS - TAU_LEAD_MS) * t;
+            tau[i] = lead + (trail - lead) * t;
         }
     }
 

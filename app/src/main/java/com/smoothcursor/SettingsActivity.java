@@ -33,8 +33,8 @@ public class SettingsActivity extends Activity {
     private LinearLayout colorBox;
     private GradientDrawable swatchBg;
     private EditText hex;
-    private SeekBar sbH, sbS, sbV, sbOutline;
-    private TextView tvOutline;
+    private SeekBar sbH, sbS, sbV, sbOutline, sbTrail;
+    private TextView tvOutline, tvTrail;
     private boolean updating = false;
     private final float[] hsv = new float[3];
 
@@ -149,6 +149,15 @@ public class SettingsActivity extends Activity {
         sbOutline.setMax(100);
         c2.addView(sbOutline);
 
+        LinearLayout cT = card(root);
+        cT.addView(text("Интенсивность шлейфа", 16, TEXT, false));
+        cT.addView(text("Чем выше, тем длиннее и заметнее след, и тем плавнее перелёт", 12, SUB, false));
+        tvTrail = text("50%", 14, SUB, false);
+        cT.addView(tvTrail);
+        sbTrail = new SeekBar(this);
+        sbTrail.setMax(100);
+        cT.addView(sbTrail);
+
         LinearLayout c3 = card(root);
         Button reset = new Button(this);
         reset.setText("Сбросить все настройки");
@@ -184,6 +193,12 @@ public class SettingsActivity extends Activity {
             void on(int p) {
                 tvOutline.setText(p + "%");
                 sp.edit().putInt(SettingsProvider.K_OUTLINE, p).apply();
+            }
+        });
+        sbTrail.setOnSeekBarChangeListener(new Seek() {
+            void on(int p) {
+                tvTrail.setText(p + "%");
+                sp.edit().putInt(SettingsProvider.K_TRAIL, p).apply();
             }
         });
 
@@ -256,6 +271,7 @@ public class SettingsActivity extends Activity {
         boolean useTheme = sp.getBoolean(SettingsProvider.K_USE_THEME, SettingsProvider.D_USE_THEME);
         int color = sp.getInt(SettingsProvider.K_COLOR, SettingsProvider.D_COLOR);
         int outline = sp.getInt(SettingsProvider.K_OUTLINE, SettingsProvider.D_OUTLINE);
+        int trail = sp.getInt(SettingsProvider.K_TRAIL, SettingsProvider.D_TRAIL);
 
         swTheme.setChecked(useTheme);
         Color.colorToHSV(color, hsv);
@@ -267,6 +283,8 @@ public class SettingsActivity extends Activity {
         hex.setText(String.format("#%06X", c & 0xFFFFFF));
         sbOutline.setProgress(outline);
         tvOutline.setText(outline + "%");
+        sbTrail.setProgress(trail);
+        tvTrail.setText(trail + "%");
         applyEnabled(useTheme);
         updating = false;
     }
