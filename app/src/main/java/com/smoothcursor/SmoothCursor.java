@@ -1,5 +1,6 @@
 package com.smoothcursor;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -75,6 +76,28 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         ClassLoader cl = lpparam.classLoader;
         XposedBridge.log("SmoothCursor v5: loaded");
 
+        // Свой фон и заставка (см. Overlay.java)
+        Overlay.init(cl);
+        try {
+            Class<?> actCls = XposedHelpers.findClassIfExists("com.termux.app.TermuxActivity", cl);
+            if (actCls != null) {
+                XposedBridge.hookAllMethods(actCls, "onCreate", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam p) {
+                        try {
+                            Overlay.maybeSplash((Activity) p.thisObject);
+                        } catch (Throwable t) {
+                            XposedBridge.log("SmoothCursor: splash error: " + t);
+                        }
+                    }
+                });
+            } else {
+                XposedBridge.log("SmoothCursor: TermuxActivity NOT FOUND, splash off");
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("SmoothCursor: splash hook failed: " + t);
+        }
+
         try {
             Class<?> viewCls = XposedHelpers.findClass("com.termux.view.TerminalView", cl);
             XposedBridge.hookAllMethods(viewCls, "onDraw", new XC_MethodHook() {
@@ -115,11 +138,20 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     } catch (Throwable t) {
                         XposedBridge.log("SmoothCursor: scroll error: " + t);
                     }
+                    try {
+                        Overlay.bgBefore(p);
+                    } catch (Throwable t) {
+                        XposedBridge.log("SmoothCursor: bg error: " + t);
+                    }
                 }
 
                 @Override
                 protected void afterHookedMethod(MethodHookParam p) {
                     inRender = false;
+                    try {
+                        Overlay.bgAfter(p);
+                    } catch (Throwable ignored) {
+                    }
                     try {
                         drawCursor(p);
                     } catch (Throwable t) {
@@ -168,6 +200,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     cfgColor = c;
                     cfgOutline = o;
                     cfgTrail = tr;
+                    Overlay.onConfig(v, b);
                     if (changed) v.postInvalidate();
                 }
             } catch (Throwable ignored) {

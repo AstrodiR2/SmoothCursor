@@ -2,10 +2,16 @@ package com.smoothcursor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.ExifInterface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -15,11 +21,18 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 public class SettingsActivity extends Activity {
 
@@ -36,6 +49,20 @@ public class SettingsActivity extends Activity {
     private SeekBar sbH, sbS, sbV, sbOutline, sbTrail, sbScroll;
     private TextView tvOutline, tvTrail, tvScroll;
     private Switch swScroll;
+
+    private static final int REQ_IMG = 101;
+    private static final int REQ_VID = 102;
+    private static final int REQ_SPLASH = 103;
+    private RadioGroup rgBg;
+    private final RadioButton[] rbMode = new RadioButton[4];
+    private Button btnBgPick, btnBgClear;
+    private TextView tvBgFile, tvDim, tvSplashFile;
+    private LinearLayout fileBox, gradBox;
+    private EditText hexC1, hexC2;
+    private SeekBar sbDim;
+    private Switch swSplash, swSplashSound;
+    private Button btnSplashPick, btnSplashClear;
+
     private boolean updating = false;
     private final float[] hsv = new float[3];
 
@@ -173,6 +200,79 @@ public class SettingsActivity extends Activity {
         sbScroll.setMax(100);
         cS.addView(sbScroll);
 
+        // ---- Фон Termux
+        LinearLayout cB = card(root);
+        cB.addView(text("Фон Termux", 16, TEXT, false));
+        cB.addView(text("Картинка, видео или градиент под текстом терминала", 12, SUB, false));
+        rgBg = new RadioGroup(this);
+        rgBg.setOrientation(RadioGroup.VERTICAL);
+        String[] modeNames = {"Выкл", "Картинка", "Видео", "Градиент"};
+        for (int i = 0; i < 4; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setId(View.generateViewId());
+            rb.setTag(Integer.valueOf(i));
+            rb.setText(modeNames[i]);
+            rb.setTextColor(TEXT);
+            rbMode[i] = rb;
+            rgBg.addView(rb);
+        }
+        cB.addView(rgBg);
+
+        fileBox = new LinearLayout(this);
+        fileBox.setOrientation(LinearLayout.VERTICAL);
+        cB.addView(fileBox);
+        tvBgFile = text("", 14, SUB, false);
+        tvBgFile.setPadding(0, dp(8), 0, 0);
+        fileBox.addView(tvBgFile);
+        btnBgPick = new Button(this);
+        btnBgPick.setText("Выбрать файл");
+        fileBox.addView(btnBgPick);
+        btnBgClear = new Button(this);
+        btnBgClear.setText("Убрать файл");
+        fileBox.addView(btnBgClear);
+
+        gradBox = new LinearLayout(this);
+        gradBox.setOrientation(LinearLayout.VERTICAL);
+        cB.addView(gradBox);
+        gradBox.addView(text("Цвет сверху слева и снизу справа", 14, SUB, false));
+        hexC1 = hexField("#141E30");
+        hexC2 = hexField("#243B55");
+        gradBox.addView(hexC1);
+        gradBox.addView(hexC2);
+
+        tvDim = text("35%", 14, SUB, false);
+        tvDim.setPadding(0, dp(12), 0, 0);
+        cB.addView(text("Затемнение фона", 14, SUB, false));
+        cB.addView(tvDim);
+        sbDim = new SeekBar(this);
+        sbDim.setMax(100);
+        cB.addView(sbDim);
+
+        // ---- Заставка
+        LinearLayout cSp = card(root);
+        swSplash = new Switch(this);
+        swSplash.setText("Заставка при запуске Termux");
+        swSplash.setTextColor(TEXT);
+        swSplash.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        cSp.addView(swSplash);
+        cSp.addView(text("Видео играет один раз при старте Termux и плавно исчезает. "
+                + "Новые сессии заставку не запускают. Тап по заставке пропускает её", 12, SUB, false));
+        swSplashSound = new Switch(this);
+        swSplashSound.setText("Со звуком");
+        swSplashSound.setTextColor(TEXT);
+        swSplashSound.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        swSplashSound.setPadding(0, dp(12), 0, 0);
+        cSp.addView(swSplashSound);
+        tvSplashFile = text("", 14, SUB, false);
+        tvSplashFile.setPadding(0, dp(8), 0, 0);
+        cSp.addView(tvSplashFile);
+        btnSplashPick = new Button(this);
+        btnSplashPick.setText("Выбрать видео");
+        cSp.addView(btnSplashPick);
+        btnSplashClear = new Button(this);
+        btnSplashClear.setText("Убрать видео");
+        cSp.addView(btnSplashClear);
+
         LinearLayout c3 = card(root);
         Button reset = new Button(this);
         reset.setText("Сбросить все настройки");
@@ -229,6 +329,47 @@ public class SettingsActivity extends Activity {
             }
         });
 
+        rgBg.setOnCheckedChangeListener((g, id) -> {
+            if (updating) return;
+            View rb = g.findViewById(id);
+            if (rb == null) return;
+            int mode = (Integer) rb.getTag();
+            sp.edit().putInt(SettingsProvider.K_BG_MODE, mode).apply();
+            refreshBgUi();
+        });
+        btnBgPick.setOnClickListener(v -> {
+            int mode = sp.getInt(SettingsProvider.K_BG_MODE, SettingsProvider.D_BG_MODE);
+            if (mode == 1) pick(REQ_IMG, "image/*");
+            else if (mode == 2) pick(REQ_VID, "video/*");
+        });
+        btnBgClear.setOnClickListener(v -> {
+            int mode = sp.getInt(SettingsProvider.K_BG_MODE, SettingsProvider.D_BG_MODE);
+            deleteMedia(mode == 1 ? SettingsProvider.F_IMG : SettingsProvider.F_VID);
+            bumpBgVer();
+            refreshBgUi();
+        });
+        watchHex(hexC1, SettingsProvider.K_BG_C1);
+        watchHex(hexC2, SettingsProvider.K_BG_C2);
+        sbDim.setOnSeekBarChangeListener(new Seek() {
+            void on(int p) {
+                tvDim.setText(p + "%");
+                sp.edit().putInt(SettingsProvider.K_BG_DIM, p).apply();
+            }
+        });
+        swSplash.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_SPLASH_ON, checked).apply();
+        });
+        swSplashSound.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_SPLASH_SOUND, checked).apply();
+        });
+        btnSplashPick.setOnClickListener(v -> pick(REQ_SPLASH, "video/*"));
+        btnSplashClear.setOnClickListener(v -> {
+            deleteMedia(SettingsProvider.F_SPL);
+            refreshBgUi();
+        });
+
         hex.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int a, int b2, int c) {
@@ -264,6 +405,9 @@ public class SettingsActivity extends Activity {
                 .setMessage("Все значения вернутся к настройкам по умолчанию.")
                 .setPositiveButton("Сбросить", (d, w) -> {
                     sp.edit().clear().apply();
+                    deleteMedia(SettingsProvider.F_IMG);
+                    deleteMedia(SettingsProvider.F_VID);
+                    deleteMedia(SettingsProvider.F_SPL);
                     load();
                     Toast.makeText(this, "Настройки сброшены", Toast.LENGTH_SHORT).show();
                 })
@@ -320,6 +464,187 @@ public class SettingsActivity extends Activity {
         sbTrail.setProgress(trail);
         tvTrail.setText(trail + "%");
         applyEnabled(useTheme);
+
+        int bgMode = sp.getInt(SettingsProvider.K_BG_MODE, SettingsProvider.D_BG_MODE);
+        if (bgMode < 0 || bgMode > 3) bgMode = 0;
+        rgBg.check(rbMode[bgMode].getId());
+        hexC1.setText(String.format("#%06X", sp.getInt(SettingsProvider.K_BG_C1, SettingsProvider.D_BG_C1) & 0xFFFFFF));
+        hexC2.setText(String.format("#%06X", sp.getInt(SettingsProvider.K_BG_C2, SettingsProvider.D_BG_C2) & 0xFFFFFF));
+        int dim = sp.getInt(SettingsProvider.K_BG_DIM, SettingsProvider.D_BG_DIM);
+        sbDim.setProgress(dim);
+        tvDim.setText(dim + "%");
+        swSplash.setChecked(sp.getBoolean(SettingsProvider.K_SPLASH_ON, SettingsProvider.D_SPLASH_ON));
+        swSplashSound.setChecked(sp.getBoolean(SettingsProvider.K_SPLASH_SOUND, SettingsProvider.D_SPLASH_SOUND));
         updating = false;
+        refreshBgUi();
+    }
+
+    // ---------------------------------------------------------------- фон и заставка
+
+    private EditText hexField(String hint) {
+        EditText e = new EditText(this);
+        e.setSingleLine(true);
+        e.setTextColor(TEXT);
+        e.setHintTextColor(SUB);
+        e.setHint(hint);
+        e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(7)});
+        return e;
+    }
+
+    private void watchHex(final EditText et, final String key) {
+        et.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b2, int c) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b2, int c) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable e) {
+                if (updating) return;
+                String t = e.toString().trim();
+                if (t.length() == 6) t = "#" + t;
+                if (t.length() != 7 || t.charAt(0) != '#') return;
+                try {
+                    int col = Color.parseColor(t) | 0xFF000000;
+                    sp.edit().putInt(key, col).apply();
+                    bumpBgVer();
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        });
+    }
+
+    private File mediaFile(String name) {
+        return new File(getFilesDir(), name);
+    }
+
+    private void deleteMedia(String name) {
+        mediaFile(name).delete();
+    }
+
+    private void bumpBgVer() {
+        sp.edit().putInt(SettingsProvider.K_BG_VER, sp.getInt(SettingsProvider.K_BG_VER, 0) + 1).apply();
+    }
+
+    private void refreshBgUi() {
+        int mode = sp.getInt(SettingsProvider.K_BG_MODE, SettingsProvider.D_BG_MODE);
+        boolean media = mode == 1 || mode == 2;
+        fileBox.setVisibility(media ? View.VISIBLE : View.GONE);
+        gradBox.setVisibility(mode == 3 ? View.VISIBLE : View.GONE);
+        sbDim.setEnabled(mode != 0);
+        if (media) {
+            boolean has = mediaFile(mode == 1 ? SettingsProvider.F_IMG : SettingsProvider.F_VID).exists();
+            String what = mode == 1 ? "Картинка" : "Видео";
+            tvBgFile.setText(has ? what + " выбрана" : "Файл не выбран");
+            btnBgPick.setText(mode == 1 ? "Выбрать картинку" : "Выбрать видео");
+            btnBgClear.setEnabled(has);
+        }
+        boolean hasSplash = mediaFile(SettingsProvider.F_SPL).exists();
+        tvSplashFile.setText(hasSplash ? "Видео выбрано" : "Видео не выбрано");
+        btnSplashClear.setEnabled(hasSplash);
+    }
+
+    private void pick(int req, String mime) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType(mime);
+        try {
+            startActivityForResult(i, req);
+        } catch (Throwable t) {
+            Toast.makeText(this, "Нет приложения для выбора файла", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(final int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (res != RESULT_OK || data == null || data.getData() == null) return;
+        final Uri uri = data.getData();
+        Toast.makeText(this, "Копирую файл…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String err = null;
+            try {
+                if (req == REQ_IMG) saveImage(uri);
+                else if (req == REQ_VID) copyTo(uri, SettingsProvider.F_VID);
+                else if (req == REQ_SPLASH) copyTo(uri, SettingsProvider.F_SPL);
+            } catch (Throwable t) {
+                err = String.valueOf(t.getMessage());
+            }
+            final String ferr = err;
+            runOnUiThread(() -> {
+                if (ferr == null) {
+                    if (req != REQ_SPLASH) bumpBgVer();
+                    Toast.makeText(this, "Готово", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Ошибка: " + ferr, Toast.LENGTH_LONG).show();
+                }
+                refreshBgUi();
+            });
+        }).start();
+    }
+
+    private void copyTo(Uri uri, String name) throws IOException {
+        File tmp = mediaFile(name + ".tmp");
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             FileOutputStream out = new FileOutputStream(tmp)) {
+            if (in == null) throw new IOException("не удалось открыть файл");
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+        replaceFile(tmp, mediaFile(name));
+    }
+
+    // Картинку уменьшаем до разумного размера и поворачиваем по EXIF, чтобы Termux не ловил OOM
+    private void saveImage(Uri uri) throws IOException {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new IOException("не удалось открыть файл");
+            BitmapFactory.decodeStream(in, null, o);
+        }
+        int sample = 1;
+        while (Math.max(o.outWidth, o.outHeight) / sample > 2400) sample *= 2;
+        BitmapFactory.Options o2 = new BitmapFactory.Options();
+        o2.inSampleSize = sample;
+        Bitmap bm;
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new IOException("не удалось открыть файл");
+            bm = BitmapFactory.decodeStream(in, null, o2);
+        }
+        if (bm == null) throw new IOException("не картинка");
+        int rot = 0;
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in != null) {
+                int ori = new ExifInterface(in).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1);
+                if (ori == 6) rot = 90;
+                else if (ori == 3) rot = 180;
+                else if (ori == 8) rot = 270;
+            }
+        } catch (Throwable ignored) {
+        }
+        if (rot != 0) {
+            Matrix m = new Matrix();
+            m.postRotate(rot);
+            Bitmap r = Bitmap.createBitmap(bm, 0, 0, bm.getWidth(), bm.getHeight(), m, true);
+            bm.recycle();
+            bm = r;
+        }
+        File tmp = mediaFile(SettingsProvider.F_IMG + ".tmp");
+        try (FileOutputStream out = new FileOutputStream(tmp)) {
+            bm.compress(Bitmap.CompressFormat.JPEG, 92, out);
+        }
+        bm.recycle();
+        replaceFile(tmp, mediaFile(SettingsProvider.F_IMG));
+    }
+
+    private void replaceFile(File tmp, File dst) throws IOException {
+        if (!tmp.renameTo(dst)) {
+            dst.delete();
+            if (!tmp.renameTo(dst)) throw new IOException("не удалось сохранить файл");
+        }
     }
 }
