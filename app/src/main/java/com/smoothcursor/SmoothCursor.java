@@ -46,6 +46,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static final float[] SY = {-1f, -1f, 1f, 1f};
 
     private static boolean inited = false;
+    private static boolean wasMoving = false;
     private static int lastCol, lastRow, lastStyle;
     private static long lastNs = 0;
 
@@ -200,7 +201,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         } else if (col != lastCol || row != lastRow || style != lastStyle) {
             retarget(tx, ty, cellW, cellH);
             lastCol = col; lastRow = row; lastStyle = style;
-            dtMs = 0f;
+            dtMs = wasMoving ? Math.min((now - lastNs) / 1_000_000f, 50f) : 0f;
         } else {
             dtMs = Math.min((now - lastNs) / 1_000_000f, 50f);
         }
@@ -214,6 +215,8 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             if (Math.abs(tx[i] - cx[i]) < 0.005f) cx[i] = tx[i]; else moving = true;
             if (Math.abs(ty[i] - cy[i]) < 0.005f) cy[i] = ty[i]; else moving = true;
         }
+
+        wasMoving = moving;
 
         if (nativeVisible) {
             path.reset();
