@@ -14,14 +14,9 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class SmoothCursor implements IXposedHookLoadPackage {
 
-    // ===== НАСТРОЙКИ (мс) =====
-    // Время "догоняния" передней кромки курсора (меньше = быстрее)
     private static final float TAU_LEAD_MS = 25f;
-    // Время "догоняния" задней кромки (больше = длиннее хвост как в Neovide)
     private static final float TAU_TRAIL_MS = 90f;
-    // Прозрачность курсора 0..255 (чтобы был виден символ под ним)
     private static final int CURSOR_ALPHA = 200;
-    // =========================
 
     private static final String PKG = "com.termux";
     private static final int COLOR_INDEX_CURSOR = 258;
@@ -30,7 +25,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static boolean inRender = false;
     private static boolean nativeVisible = true;
 
-    // Текущие края курсора в клетках (экранные координаты)
     private static float curL, curT, curR, curB;
     private static boolean inited = false;
     private static long lastNs = 0;
@@ -40,9 +34,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!PKG.equals(lpparam.packageName)) return;
         ClassLoader cl = lpparam.classLoader;
+        XposedBridge.log("SmoothCursor v2: loaded");
 
         try {
-            // Запоминаем View, чтобы просить перерисовку
             Class<?> viewCls = XposedHelpers.findClass("com.termux.view.TerminalView", cl);
             XposedBridge.hookAllMethods(viewCls, "onDraw", new XC_MethodHook() {
                 @Override
@@ -51,7 +45,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 }
             });
 
-            // Прячем родной курсор только во время render
             Class<?> emuCls = XposedHelpers.findClass("com.termux.terminal.TerminalEmulator", cl);
             XposedBridge.hookAllMethods(emuCls, "shouldCursorBeVisible", new XC_MethodHook() {
                 @Override
@@ -64,8 +57,16 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 }
             });
 
-            // Рисуем свой курсор поверх
-            Class<?> rendCls = XposedHelpers.findClass("com.termux.terminal.TerminalRenderer", cl);
+            Class<?> rendCls = XposedHelpers.findClassIfExists("com.termux.view.TerminalRenderer", cl);
+            if (rendCls == null) {
+                rendCls = XposedHelpers.findClassIfExists("com.termux.terminal.TerminalRenderer", cl);
+            }
+            if (rendCls == null) {
+                XposedBridge.log("SmoothCursor v2: TerminalRenderer NOT FOUND in either package");
+                return;
+            }
+            XposedBridge.log("SmoothCursor v2: renderer=" + rendCls.getName());
+
             XposedBridge.hookAllMethods(rendCls, "render", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam p) {
@@ -79,14 +80,14 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     try {
                         drawCursor(p);
                     } catch (Throwable t) {
-                        XposedBridge.log("SmoothCursor: " + t);
+                        XposedBridge.log("SmoothCursor v2: draw error: " + t);
                     }
                 }
             });
 
-            XposedBridge.log("SmoothCursor: hooks installed");
+            XposedBridge.log("SmoothCursor v2: hooks installed");
         } catch (Throwable t) {
-            XposedBridge.log("SmoothCursor: init failed: " + t);
+            XposedBridge.log("SmoothCursor v2: init failed: " + t);
         }
     }
 
@@ -102,13 +103,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         int col = (Integer) XposedHelpers.callMethod(emu, "getCursorCol");
         int row = (Integer) XposedHelpers.callMethod(emu, "getCursorRow") - topRow;
 
-        int style = 0; // 0 блок, 1 подчёркивание, 2 палка
+        int style = 0;
         try {
             style = (Integer) XposedHelpers.callMethod(emu, "getCursorStyle");
         } catch (Throwable ignored) {
         }
 
-        // Целевые края в клетках
         float tL = col, tR = col + 1, tT = row, tB = row + 1;
         if (style == 1) tT = row + 0.85f;
         else if (style == 2) tR = col + 0.15f;
@@ -141,7 +141,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
     }
 
-    // Передняя кромка (leading) двигается быстро, задняя медленнее
     private static float chase(float cur, float target, float dtMs, boolean leading) {
         float tau = leading ? TAU_LEAD_MS : TAU_TRAIL_MS;
         float a = 1f - (float) Math.exp(-dtMs / tau);
