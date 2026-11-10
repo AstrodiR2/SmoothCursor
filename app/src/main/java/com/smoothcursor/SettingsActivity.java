@@ -33,8 +33,9 @@ public class SettingsActivity extends Activity {
     private LinearLayout colorBox;
     private GradientDrawable swatchBg;
     private EditText hex;
-    private SeekBar sbH, sbS, sbV, sbOutline, sbTrail;
-    private TextView tvOutline, tvTrail;
+    private SeekBar sbH, sbS, sbV, sbOutline, sbTrail, sbScroll;
+    private TextView tvOutline, tvTrail, tvScroll;
+    private Switch swScroll;
     private boolean updating = false;
     private final float[] hsv = new float[3];
 
@@ -158,6 +159,20 @@ public class SettingsActivity extends Activity {
         sbTrail.setMax(100);
         cT.addView(sbTrail);
 
+        LinearLayout cS = card(root);
+        swScroll = new Switch(this);
+        swScroll.setText("Плавный скроллинг");
+        swScroll.setTextColor(TEXT);
+        swScroll.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        cS.addView(swScroll);
+        cS.addView(text("Текст плавно ездит при прокрутке, а не перескакивает по строкам", 12, SUB, false));
+        tvScroll = text("50%", 14, SUB, false);
+        tvScroll.setPadding(0, dp(12), 0, 0);
+        cS.addView(tvScroll);
+        sbScroll = new SeekBar(this);
+        sbScroll.setMax(100);
+        cS.addView(sbScroll);
+
         LinearLayout c3 = card(root);
         Button reset = new Button(this);
         reset.setText("Сбросить все настройки");
@@ -199,6 +214,18 @@ public class SettingsActivity extends Activity {
             void on(int p) {
                 tvTrail.setText(p + "%");
                 sp.edit().putInt(SettingsProvider.K_TRAIL, p).apply();
+            }
+        });
+
+        swScroll.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_SMOOTH_SCROLL, checked).apply();
+            sbScroll.setEnabled(checked);
+        });
+        sbScroll.setOnSeekBarChangeListener(new Seek() {
+            void on(int p) {
+                tvScroll.setText(p + "%");
+                sp.edit().putInt(SettingsProvider.K_SCROLL_SPEED, p).apply();
             }
         });
 
@@ -272,6 +299,13 @@ public class SettingsActivity extends Activity {
         int color = sp.getInt(SettingsProvider.K_COLOR, SettingsProvider.D_COLOR);
         int outline = sp.getInt(SettingsProvider.K_OUTLINE, SettingsProvider.D_OUTLINE);
         int trail = sp.getInt(SettingsProvider.K_TRAIL, SettingsProvider.D_TRAIL);
+
+        boolean smooth = sp.getBoolean(SettingsProvider.K_SMOOTH_SCROLL, SettingsProvider.D_SMOOTH_SCROLL);
+        int speed = sp.getInt(SettingsProvider.K_SCROLL_SPEED, SettingsProvider.D_SCROLL_SPEED);
+        swScroll.setChecked(smooth);
+        sbScroll.setProgress(speed);
+        sbScroll.setEnabled(smooth);
+        tvScroll.setText(speed + "%");
 
         swTheme.setChecked(useTheme);
         Color.colorToHSV(color, hsv);

@@ -31,6 +31,8 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static volatile int cfgColor = 0xFFFFFFFF;
     private static volatile int cfgOutline = 0;
     private static volatile int cfgTrail = 50;
+    private static volatile boolean cfgSmoothScroll = true;
+    private static volatile int cfgScrollSpeed = 50;
     private static volatile boolean fetching = false;
     private static long lastFetchMs = -100000;
 
@@ -49,6 +51,14 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static boolean wasMoving = false;
     private static int lastCol, lastRow, lastStyle;
     private static long lastNs = 0;
+
+    // Плавный скролл: визуальное смещение в пикселях, затухает к нулю
+    private static float scrollOff = 0f;
+    private static int lastTopRow = 0;
+    private static boolean scrollInited = false;
+    private static long lastScrollNs = 0;
+    private static int cursorTopRow = 0;
+    private static final String EXTRA_SAVED = "sc_saved";
 
     private static final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -100,6 +110,11 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 protected void beforeHookedMethod(MethodHookParam p) {
                     inRender = true;
                     nativeVisible = true;
+                    try {
+                        applyScroll(p);
+                    } catch (Throwable t) {
+                        XposedBridge.log("SmoothCursor: scroll error: " + t);
+                    }
                 }
 
                 @Override
@@ -109,6 +124,13 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                         drawCursor(p);
                     } catch (Throwable t) {
                         XposedBridge.log("SmoothCursor v5: draw error: " + t);
+                    } finally {
+                        if (p.getObjectExtra(EXTRA_SAVED) != null) {
+                            try {
+                                ((Canvas) p.args[1]).restore();
+                            } catch (Throwable ignored) {
+                            }
+                        }
                     }
                 }
             });
@@ -136,7 +158,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     int c = b.getInt("color", 0xFFFFFFFF);
                     int o = b.getInt("outline", 0);
                     int tr = b.getInt("trail", 50);
-                    boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline || tr != cfgTrail;
+                    boolean ss = b.getBoolean("smooth_scroll", true);
+                    int sv = b.getInt("scroll_speed", 50);
+                    boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline || tr != cfgTrail
+                            || ss != cfgSmoothScroll || sv != cfgScrollSpeed;
+                    cfgSmoothScroll = ss;
+                    cfgScrollSpeed = sv;
                     cfgUseTheme = ut;
                     cfgColor = c;
                     cfgOutline = o;
@@ -148,6 +175,50 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 fetching = false;
             }
         }).start();
+    }
+
+    // Скролл Termux двигает topRow целыми строками. Здесь сдвигаем холст на недостающие
+    // пиксели и плавно возвращаем в 0, так что текст не телепортируется, а ездит.
+    private static void applyScroll(XC_MethodHook.MethodHookParam p) {
+        Canvas canvas = (Canvas) p.args[1];
+        int topRow = (Integer) p.args[2];
+        long now = System.nanoTime();
+
+        if (!cfgSmoothScroll) {
+            scrollOff = 0f;
+            lastTopRow = topRow;
+            lastScrollNs = now;
+            scrollInited = true;
+            return;
+        }
+
+        int cellH = XposedHelpers.getIntField(p.thisObject, "mFontLineSpacing");
+
+        if (scrollInited) {
+            float dtMs = Math.min((now - lastScrollNs) / 1_000_000f, 50f);
+            float tau = 30f + 120f * cfgScrollSpeed / 100f;
+            scrollOff *= (float) Math.exp(-dtMs / tau);
+            int d = topRow - lastTopRow;
+            if (d != 0) {
+                float lim = cellH;
+                scrollOff = Math.max(-lim, Math.min(lim, scrollOff + d * (float) cellH));
+            }
+        }
+        scrollInited = true;
+        lastTopRow = topRow;
+        lastScrollNs = now;
+
+        if (Math.abs(scrollOff) < 0.5f) {
+            scrollOff = 0f;
+            return;
+        }
+
+        canvas.save();
+        canvas.translate(0f, scrollOff);
+        p.setObjectExtra(EXTRA_SAVED, Boolean.TRUE);
+
+        View v = viewRef.get();
+        if (v != null) v.postInvalidateOnAnimation();
     }
 
     private static void drawCursor(XC_MethodHook.MethodHookParam p) {
@@ -174,6 +245,10 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             XposedBridge.log("SmoothCursor v5: spacing=" + cellH + " ascent=" + ascent
                     + " yOff=" + yOff + " cellW=" + cellW);
         }
+
+        // При скролле курсор едет вместе с текстом (через сдвиг холста), без своей анимации
+        if (cfgSmoothScroll && topRow != cursorTopRow) inited = false;
+        cursorTopRow = topRow;
 
         int col = (Integer) XposedHelpers.callMethod(emu, "getCursorCol");
         int row = (Integer) XposedHelpers.callMethod(emu, "getCursorRow") - topRow;
