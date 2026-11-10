@@ -10,5 +10,25 @@
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="SmoothCursor"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name=".SettingsProvider"
+            android:authorities="com.smoothcursor.settings"
+            android:exported="true" />
+
     </application>
 </manifest>

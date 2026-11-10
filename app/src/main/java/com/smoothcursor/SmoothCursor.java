@@ -1,8 +1,12 @@
 package com.smoothcursor;
 
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.View;
 
 import java.lang.ref.WeakReference;
@@ -15,23 +19,27 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class SmoothCursor implements IXposedHookLoadPackage {
 
-    // Время догоняния для углов (мс): передние быстро, задние медленно
     private static final float TAU_LEAD_MS = 25f;
     private static final float TAU_TRAIL_MS = 90f;
-    // Прозрачность курсора 0..255
     private static final int CURSOR_ALPHA = 200;
-    // Ручная подгонка по вертикали в долях клетки (плюс вниз, минус вверх)
     private static final float Y_SHIFT_CELLS = 0f;
 
     private static final String PKG = "com.termux";
     private static final int COLOR_INDEX_CURSOR = 258;
+    private static final Uri CFG_URI = Uri.parse("content://com.smoothcursor.settings");
+
+    // Настройки из приложения модуля (подтягиваются в фоне)
+    private static volatile boolean cfgUseTheme = true;
+    private static volatile int cfgColor = 0xFFFFFFFF;
+    private static volatile int cfgOutline = 0;
+    private static volatile boolean fetching = false;
+    private static long lastFetchMs = -100000;
 
     private static WeakReference<View> viewRef = new WeakReference<>(null);
     private static boolean inRender = false;
     private static boolean nativeVisible = true;
     private static boolean logged = false;
 
-    // Четыре угла курсора в клетках: 0 левый верх, 1 правый верх, 2 правый низ, 3 левый низ
     private static final float[] cx = new float[4];
     private static final float[] cy = new float[4];
     private static final float[] tau = {TAU_LEAD_MS, TAU_LEAD_MS, TAU_LEAD_MS, TAU_LEAD_MS};
@@ -42,14 +50,20 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static int lastCol, lastRow, lastStyle;
     private static long lastNs = 0;
 
-    private static final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Path path = new Path();
+
+    static {
+        strokePaint.setStyle(Paint.Style.STROKE);
+        strokePaint.setStrokeJoin(Paint.Join.ROUND);
+    }
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!PKG.equals(lpparam.packageName)) return;
         ClassLoader cl = lpparam.classLoader;
-        XposedBridge.log("SmoothCursor v3: loaded");
+        XposedBridge.log("SmoothCursor v4: loaded");
 
         try {
             Class<?> viewCls = XposedHelpers.findClass("com.termux.view.TerminalView", cl);
@@ -77,7 +91,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 rendCls = XposedHelpers.findClassIfExists("com.termux.terminal.TerminalRenderer", cl);
             }
             if (rendCls == null) {
-                XposedBridge.log("SmoothCursor v3: TerminalRenderer NOT FOUND");
+                XposedBridge.log("SmoothCursor v4: TerminalRenderer NOT FOUND");
                 return;
             }
 
@@ -94,18 +108,49 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     try {
                         drawCursor(p);
                     } catch (Throwable t) {
-                        XposedBridge.log("SmoothCursor v3: draw error: " + t);
+                        XposedBridge.log("SmoothCursor v4: draw error: " + t);
                     }
                 }
             });
 
-            XposedBridge.log("SmoothCursor v3: hooks installed, renderer=" + rendCls.getName());
+            XposedBridge.log("SmoothCursor v4: hooks installed, renderer=" + rendCls.getName());
         } catch (Throwable t) {
-            XposedBridge.log("SmoothCursor v3: init failed: " + t);
+            XposedBridge.log("SmoothCursor v4: init failed: " + t);
         }
     }
 
+    // Раз в ~1.5 c тихо спрашиваем настройки у приложения модуля
+    private static void maybeFetch() {
+        final View v = viewRef.get();
+        if (v == null || fetching) return;
+        long now = SystemClock.uptimeMillis();
+        if (now - lastFetchMs < 1500) return;
+        lastFetchMs = now;
+        fetching = true;
+        final Context ctx = v.getContext();
+        new Thread(() -> {
+            try {
+                Bundle b = ctx.getContentResolver().call(CFG_URI, "get", null, null);
+                if (b != null) {
+                    boolean ut = b.getBoolean("use_theme", true);
+                    int c = b.getInt("color", 0xFFFFFFFF);
+                    int o = b.getInt("outline", 0);
+                    boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline;
+                    cfgUseTheme = ut;
+                    cfgColor = c;
+                    cfgOutline = o;
+                    if (changed) v.postInvalidate();
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                fetching = false;
+            }
+        }).start();
+    }
+
     private static void drawCursor(XC_MethodHook.MethodHookParam p) {
+        maybeFetch();
+
         Object renderer = p.thisObject;
         Object emu = p.args[0];
         Canvas canvas = (Canvas) p.args[1];
@@ -120,12 +165,11 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             ascent = -cellH;
         }
-        // Верх нулевой строки так же, как считает сам Termux
         float yOff = cellH + ascent;
 
         if (!logged) {
             logged = true;
-            XposedBridge.log("SmoothCursor v3: spacing=" + cellH + " ascent=" + ascent
+            XposedBridge.log("SmoothCursor v4: spacing=" + cellH + " ascent=" + ascent
                     + " yOff=" + yOff + " cellW=" + cellW);
         }
 
@@ -178,9 +222,20 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 if (i == 0) path.moveTo(px, py); else path.lineTo(px, py);
             }
             path.close();
-            paint.setColor(cursorColor(emu));
-            paint.setAlpha(CURSOR_ALPHA);
-            canvas.drawPath(path, paint);
+
+            int base = (cfgUseTheme ? cursorColor(emu) : cfgColor) | 0xFF000000;
+
+            fillPaint.setColor(base);
+            fillPaint.setAlpha(CURSOR_ALPHA);
+            canvas.drawPath(path, fillPaint);
+
+            int o = cfgOutline;
+            if (o > 0) {
+                strokePaint.setColor(base);
+                strokePaint.setAlpha(255);
+                strokePaint.setStrokeWidth(Math.max(1f, cellH * 0.12f * o / 100f));
+                canvas.drawPath(path, strokePaint);
+            }
         }
 
         if (moving) {
@@ -189,7 +244,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
     }
 
-    // Новая цель: углы по направлению движения получают короткое время, задние длинное
     private static void retarget(float[] tx, float[] ty, float cellW, int cellH) {
         float ccx = 0, ccy = 0, tcx = 0, tcy = 0;
         for (int i = 0; i < 4; i++) {
