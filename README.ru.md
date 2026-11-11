@@ -6,7 +6,7 @@
 
 [🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md)
 
-[![Скачать](https://img.shields.io/badge/Скачать-последний%20APK-brightgreen?style=for-the-badge)](https://github.com/YOUR_USERNAME/SmoothCursor/releases/latest)
+[![Скачать](https://img.shields.io/badge/Скачать-последний%20APK-brightgreen?style=for-the-badge)](https://github.com/AstrodiR2/SmoothCursor/releases/latest)
 [![LSPosed](https://img.shields.io/badge/Нужен-LSPosed-blue?style=for-the-badge)](https://github.com/LSPosed/LSPosed)
 
 </div>
@@ -42,14 +42,14 @@ SmoothCursor это модуль [LSPosed](https://github.com/LSPosed/LSPosed) �
 
 ## Установка
 
-1. Скачай `SmoothCursor.apk` из [последнего релиза](https://github.com/YOUR_USERNAME/SmoothCursor/releases/latest) и установи.
+1. Скачай `SmoothCursor.apk` из [последнего релиза](https://github.com/AstrodiR2/SmoothCursor/releases/latest) и установи.
 2. Открой **LSPosed → Модули → SmoothCursor**, включи модуль и выбери **Termux** в области действия.
 3. Останови Termux принудительно и запусти заново.
 4. Открой приложение **SmoothCursor** и настрой эффекты.
 
 ## Сборка из исходников
 
-Каждый пуш в `main` собирает APK через GitHub Actions и выкладывает его в [Releases](https://github.com/YOUR_USERNAME/SmoothCursor/releases). Локально:
+Каждый пуш в `main` собирает APK через GitHub Actions и выкладывает его в [Releases](https://github.com/AstrodiR2/SmoothCursor/releases). Локально:
 
 ```bash
 gradle assembleRelease
@@ -62,4 +62,4 @@ gradle assembleRelease
 
 ## Участие в проекте
 
-Issues и pull request'ы приветствуются: [создать issue](https://github.com/YOUR_USERNAME/SmoothCursor/issues).
+Issues и pull request'ы приветствуются: [создать issue](https://github.com/AstrodiR2/SmoothCursor/issues).

@@ -6,7 +6,7 @@
 
 [🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md)
 
-[![Download](https://img.shields.io/badge/Download-latest%20APK-brightgreen?style=for-the-badge)](https://github.com/YOUR_USERNAME/SmoothCursor/releases/latest)
+[![Download](https://img.shields.io/badge/Download-latest%20APK-brightgreen?style=for-the-badge)](https://github.com/AstrodiR2/SmoothCursor/releases/latest)
 [![LSPosed](https://img.shields.io/badge/Requires-LSPosed-blue?style=for-the-badge)](https://github.com/LSPosed/LSPosed)
 
 </div>
@@ -42,14 +42,14 @@ Click a GIF to open the full-quality video.
 
 ## Installation
 
-1. Download `SmoothCursor.apk` from the [latest release](https://github.com/YOUR_USERNAME/SmoothCursor/releases/latest) and install it.
+1. Download `SmoothCursor.apk` from the [latest release](https://github.com/AstrodiR2/SmoothCursor/releases/latest) and install it.
 2. Open **LSPosed → Modules → SmoothCursor**, enable it and select **Termux** in the scope.
 3. Force-stop Termux and start it again.
 4. Open the **SmoothCursor** app to configure effects.
 
 ## Build from source
 
-Every push to `main` builds an APK with GitHub Actions and publishes it in [Releases](https://github.com/YOUR_USERNAME/SmoothCursor/releases). To build locally:
+Every push to `main` builds an APK with GitHub Actions and publishes it in [Releases](https://github.com/AstrodiR2/SmoothCursor/releases). To build locally:
 
 ```bash
 gradle assembleRelease
@@ -62,4 +62,4 @@ gradle assembleRelease
 
 ## Contributing
 
-Issues and pull requests are welcome: [open an issue](https://github.com/YOUR_USERNAME/SmoothCursor/issues).
+Issues and pull requests are welcome: [open an issue](https://github.com/AstrodiR2/SmoothCursor/issues).
