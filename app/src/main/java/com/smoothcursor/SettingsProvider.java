@@ -34,6 +34,10 @@ public class SettingsProvider extends ContentProvider {
     public static final String K_FADE_ON = "fade_on";
     public static final String K_FADE_MS = "fade_ms";
 
+    // Картинки в терминале (iTerm2 / kitty)
+    public static final String K_IMG_ON = "img_on";
+    public static final String K_IMG_BEHIND = "img_behind";
+
     // Фон: 0 выкл, 1 картинка, 2 видео, 3 градиент
     public static final String K_BG_MODE = "bg_mode";
     public static final String K_BG_DIM = "bg_dim";
@@ -60,6 +64,9 @@ public class SettingsProvider extends ContentProvider {
 
     public static final boolean D_FADE_ON = true;
     public static final int D_FADE_MS = 160;
+
+    public static final boolean D_IMG_ON = true;
+    public static final boolean D_IMG_BEHIND = false;
 
     public static final int D_BG_MODE = 0;
     public static final int D_BG_DIM = 35;
@@ -97,6 +104,8 @@ public class SettingsProvider extends ContentProvider {
         b.putInt(K_GLOW_INTENSITY, sp.getInt(K_GLOW_INTENSITY, D_GLOW_INTENSITY));
         b.putBoolean(K_FADE_ON, sp.getBoolean(K_FADE_ON, D_FADE_ON));
         b.putInt(K_FADE_MS, sp.getInt(K_FADE_MS, D_FADE_MS));
+        b.putBoolean(K_IMG_ON, sp.getBoolean(K_IMG_ON, D_IMG_ON));
+        b.putBoolean(K_IMG_BEHIND, sp.getBoolean(K_IMG_BEHIND, D_IMG_BEHIND));
         b.putInt(K_BG_MODE, sp.getInt(K_BG_MODE, D_BG_MODE));
         b.putInt(K_BG_DIM, sp.getInt(K_BG_DIM, D_BG_DIM));
         b.putInt(K_BG_C1, sp.getInt(K_BG_C1, D_BG_C1));

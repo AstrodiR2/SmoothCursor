@@ -141,6 +141,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam p) {
                     viewRef = new WeakReference<>((View) p.thisObject);
+                    TermImages.onViewDraw((View) p.thisObject);
                 }
             });
 
@@ -165,6 +166,13 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 return;
             }
 
+            // Картинки в терминале (iTerm2 / kitty), см. TermImages.java
+            try {
+                TermImages.install(cl, emuCls);
+            } catch (Throwable t) {
+                XposedBridge.log("SmoothCursor: images install failed: " + t);
+            }
+
             XposedBridge.hookAllMethods(rendCls, "render", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam p) {
@@ -174,6 +182,11 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                         applyScroll(p);
                     } catch (Throwable t) {
                         XposedBridge.log("SmoothCursor: scroll error: " + t);
+                    }
+                    try {
+                        TermImages.frameBegin(p.thisObject, p.args[0], (Integer) p.args[2]);
+                    } catch (Throwable t) {
+                        XposedBridge.log("SmoothCursor: images frame error: " + t);
                     }
                     try {
                         fadeFrame(p);
@@ -198,6 +211,11 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     if (fadeActive) {
                         View fv = viewRef.get();
                         if (fv != null) fv.postInvalidateOnAnimation();
+                    }
+                    try {
+                        TermImages.frameEnd(p.args);
+                    } catch (Throwable t) {
+                        XposedBridge.log("SmoothCursor: images draw error: " + t);
                     }
                     try {
                         drawCursor(p);
@@ -231,6 +249,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         if (XposedBridge.hookAllMethods(rendCls, "drawTextRun", new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam p) {
+                TermImages.beforeTextRun(p.args);
                 try {
                     if (fadeBefore(p)) return;
                 } catch (Throwable t) {
@@ -559,6 +578,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     boolean gOn = b.getBoolean("glow_on", false);
                     int gR = b.getInt("glow_radius", 6);
                     int gI = b.getInt("glow_intensity", 70);
+                    TermImages.setConfig(b.getBoolean("img_on", true), b.getBoolean("img_behind", false));
                     cfgFade = b.getBoolean("fade_on", true);
                     cfgFadeMs = Math.max(50, b.getInt("fade_ms", 160));
                     boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline || tr != cfgTrail

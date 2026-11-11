@@ -28,6 +28,10 @@
     <string name="glow_size">Glow size</string>
     <string name="glow_strength">Glow brightness</string>
 
+    <string name="img">Images in terminal</string>
+    <string name="img_desc">Programs like fastfetch or imgcat can show real images (iTerm2 and kitty protocols). Takes effect after restarting Termux</string>
+    <string name="img_behind">Draw images behind text</string>
+    <string name="img_behind_desc">Default layer for images that don\'t choose one themselves. Programs can override it with z=</string>
     <string name="fade">Smooth text appearance</string>
     <string name="fade_desc">New characters (ls, typing, command output) fade in instead of appearing instantly</string>
     <string name="duration">Duration</string>

@@ -27,6 +27,10 @@
     <string name="glow_size">Размер свечения</string>
     <string name="glow_strength">Яркость свечения</string>
 
+    <string name="img">Картинки в терминале</string>
+    <string name="img_desc">Программы вроде fastfetch и imgcat могут показывать настоящие картинки (протоколы iTerm2 и kitty). Действует после перезапуска Termux</string>
+    <string name="img_behind">Рисовать картинки за текстом</string>
+    <string name="img_behind_desc">Слой по умолчанию для картинок, которые сами его не выбрали. Программа может задать свой через z=</string>
     <string name="fade">Плавное появление текста</string>
     <string name="fade_desc">Новые буквы (ls, ввод, вывод команд) проявляются плавно, а не сразу</string>
     <string name="duration">Длительность</string>

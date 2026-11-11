@@ -59,7 +59,7 @@ public class SettingsActivity extends Activity {
     private SeekBar sbH, sbS, sbV, sbOutline, sbTrail, sbScroll;
     private TextView tvOutline, tvTrail, tvScroll;
     private Switch swScroll;
-    private Switch swPad, swGlow, swFade;
+    private Switch swPad, swGlow, swFade, swImg, swImgBehind;
     private SeekBar sbPadX, sbPadY, sbGlowR, sbGlowI, sbFade;
     private TextView tvPadX, tvPadY, tvGlowR, tvGlowI, tvFade;
 
@@ -380,6 +380,13 @@ public class SettingsActivity extends Activity {
         tvFade = row(cF, R.string.duration, false);
         sbFade = seek(cF, 450);
 
+        // ---- Картинки в терминале
+        LinearLayout cI = card(root);
+        swImg = sw(cI, R.string.img);
+        desc(cI, R.string.img_desc);
+        swImgBehind = sw(cI, R.string.img_behind);
+        desc(cI, R.string.img_behind_desc);
+
         // ---- Фон Termux
         LinearLayout cB = card(root);
         head(cB, R.string.bg_title, R.string.bg_desc);
@@ -531,6 +538,16 @@ public class SettingsActivity extends Activity {
                 tvGlowI.setText(pctS(p));
                 sp.edit().putInt(SettingsProvider.K_GLOW_INTENSITY, p).apply();
             }
+        });
+
+        swImg.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_IMG_ON, checked).apply();
+            swImgBehind.setEnabled(checked);
+        });
+        swImgBehind.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_IMG_BEHIND, checked).apply();
         });
 
         swFade.setOnCheckedChangeListener((v, checked) -> {
@@ -691,6 +708,10 @@ public class SettingsActivity extends Activity {
 
         boolean fadeOn = sp.getBoolean(SettingsProvider.K_FADE_ON, SettingsProvider.D_FADE_ON);
         int fadeMs = sp.getInt(SettingsProvider.K_FADE_MS, SettingsProvider.D_FADE_MS);
+        boolean imgOn = sp.getBoolean(SettingsProvider.K_IMG_ON, SettingsProvider.D_IMG_ON);
+        swImg.setChecked(imgOn);
+        swImgBehind.setChecked(sp.getBoolean(SettingsProvider.K_IMG_BEHIND, SettingsProvider.D_IMG_BEHIND));
+        swImgBehind.setEnabled(imgOn);
         swFade.setChecked(fadeOn);
         sbFade.setProgress(Math.max(0, fadeMs - 50));
         sbFade.setEnabled(fadeOn);
