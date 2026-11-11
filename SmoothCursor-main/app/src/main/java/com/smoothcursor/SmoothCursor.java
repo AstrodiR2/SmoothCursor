@@ -59,10 +59,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static boolean scrollInited = false;
     private static long lastScrollNs = 0;
     private static int cursorTopRow = 0;
-    // Сколько строк эмулятор прокрутил сам (Enter внизу экрана, вывод команд)
-    private static int pendingScroll = 0;
-    // Сдвиг контента в строках за этот кадр: курсор сдвигается вместе с ним, а не телепортируется
-    private static int frameShift = 0;
     private static final String EXTRA_SAVED = "sc_saved";
 
     private static final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -135,24 +131,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 }
             });
 
-            // Эмулятор сам прокручивает экран, когда курсор внизу. Ловим, на сколько строк,
-            // чтобы текст плыл, а не прыгал.
-            XposedBridge.hookAllMethods(emuCls, "clearScrollCounter", new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam p) {
-                    try {
-                        if (!cfgSmoothScroll) return;
-                        Object alt = XposedHelpers.callMethod(p.thisObject, "isAlternateBufferActive");
-                        if (alt instanceof Boolean && (Boolean) alt) return;
-                        Object n = XposedHelpers.callMethod(p.thisObject, "getScrollCounter");
-                        if (n instanceof Integer && (Integer) n > 0) {
-                            pendingScroll = Math.min(1000, pendingScroll + (Integer) n);
-                        }
-                    } catch (Throwable ignored) {
-                    }
-                }
-            });
-
             Class<?> rendCls = XposedHelpers.findClassIfExists("com.termux.view.TerminalRenderer", cl);
             if (rendCls == null) {
                 rendCls = XposedHelpers.findClassIfExists("com.termux.terminal.TerminalRenderer", cl);
@@ -184,7 +162,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                         XposedBridge.log("SmoothCursor: bg error: " + t);
                     }
                     try {
-                        Fx.beforeRender(p.args[0], (Integer) p.args[2]);
+                        if (Cfg.fiOn) Fx.beforeRender(p.args[0], (Integer) p.args[2]);
                     } catch (Throwable t) {
                         XposedBridge.log("SmoothCursor: fx error: " + t);
                     }
@@ -263,12 +241,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     // Скролл Termux двигает topRow целыми строками. Здесь сдвигаем холст на недостающие
     // пиксели и плавно возвращаем в 0, так что текст не телепортируется, а ездит.
     private static void applyScroll(XC_MethodHook.MethodHookParam p) {
-        frameShift = 0;
         Canvas canvas = (Canvas) p.args[1];
         int topRow = (Integer) p.args[2];
         long now = System.nanoTime();
-        int pend = pendingScroll;
-        pendingScroll = 0;
 
         if (!cfgSmoothScroll) {
             scrollOff = 0f;
@@ -285,13 +260,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             float tau = 30f + 120f * cfgScrollSpeed / 100f;
             scrollOff *= (float) Math.exp(-dtMs / tau);
             int d = topRow - lastTopRow;
-            // Эмулятор прокрутил сам (мы внизу): это тот же сдвиг, только topRow остался 0.
-            // Большой вывод (cat файла) не анимируем, иначе вечное дрожание.
-            if (topRow == 0 && lastTopRow == 0 && pend > 0 && pend <= 3) d += pend;
             if (d != 0) {
-                float lim = cellH * 2f;
+                float lim = cellH;
                 scrollOff = Math.max(-lim, Math.min(lim, scrollOff + d * (float) cellH));
-                if (Math.abs(d) <= 3) frameShift = d;
             }
         }
         scrollInited = true;
@@ -337,16 +308,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
 
         // При скролле курсор едет вместе с текстом (через сдвиг холста), без своей анимации
-        // Раньше тут был сброс (inited = false): курсор телепортировался при каждом сдвиге.
-        // Теперь он едет вместе с контентом и дальше плавно догоняет цель.
-        if (cfgSmoothScroll) {
-            if (Math.abs(topRow - cursorTopRow) > 3) {
-                inited = false;
-            } else if (inited && frameShift != 0) {
-                for (int i = 0; i < 4; i++) cy[i] -= frameShift;
-                lastRow -= frameShift;
-            }
-        }
+        if (cfgSmoothScroll && topRow != cursorTopRow) inited = false;
         cursorTopRow = topRow;
 
         int col = (Integer) XposedHelpers.callMethod(emu, "getCursorCol");
@@ -380,10 +342,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             moved = true;
             retarget(tx, ty, cellW, cellH);
             lastCol = col; lastRow = row; lastStyle = style;
-            // На первом кадре движения даём небольшой шаг, а не 0, чтобы старт не был ступенькой
-            dtMs = wasMoving ? Math.min((now - lastNs) / 1_000_000f, 48f) : 8f;
+            dtMs = wasMoving ? Math.min((now - lastNs) / 1_000_000f, 50f) : 0f;
         } else {
-            dtMs = Math.min((now - lastNs) / 1_000_000f, 48f);
+            dtMs = Math.min((now - lastNs) / 1_000_000f, 50f);
         }
         lastNs = now;
 
@@ -397,6 +358,37 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
 
         wasMoving = moving;
+
+        // Все эффекты выключены: рисуем в точности как в старых плавных версиях, без Fx
+        if (!(Cfg.cmOn || Cfg.blOn || Cfg.crRound > 0 || Cfg.glStr > 0 || Cfg.ptOn || Cfg.fiOn)) {
+            if (nativeVisible) {
+                path.reset();
+                for (int i = 0; i < 4; i++) {
+                    float px = cx[i] * cellW;
+                    float py = yOff + (cy[i] + Y_SHIFT_CELLS) * cellH;
+                    if (i == 0) path.moveTo(px, py); else path.lineTo(px, py);
+                }
+                path.close();
+
+                int base = (cfgUseTheme ? cursorColor(emu) : cfgColor) | 0xFF000000;
+                fillPaint.setColor(base);
+                fillPaint.setAlpha(CURSOR_ALPHA);
+                canvas.drawPath(path, fillPaint);
+
+                int o = cfgOutline;
+                if (o > 0) {
+                    strokePaint.setColor(base);
+                    strokePaint.setAlpha(255);
+                    strokePaint.setStrokeWidth(Math.max(1f, cellH * 0.12f * o / 100f));
+                    canvas.drawPath(path, strokePaint);
+                }
+            }
+            if (moving) {
+                View v0 = viewRef.get();
+                if (v0 != null) v0.postInvalidateOnAnimation();
+            }
+            return;
+        }
 
         View vv = viewRef.get();
 
