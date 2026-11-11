@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xposed_description">Плавный курсор в Termux, как в Neovide</string>
+
+    <string name="subtitle">Настройки курсора в Termux</string>
+
+    <string name="theme_color">Цвет из темы Termux</string>
+    <string name="hue">Оттенок</string>
+    <string name="saturation">Насыщенность</string>
+    <string name="brightness">Яркость</string>
+
+    <string name="outline">Интенсивность контура</string>
+    <string name="trail">Интенсивность шлейфа</string>
+    <string name="trail_desc">Чем выше, тем длиннее и заметнее след, и тем плавнее перелёт</string>
+
+    <string name="scroll">Плавный скроллинг</string>
+    <string name="scroll_desc">Текст плавно ездит при прокрутке, а не перескакивает по строкам</string>
+    <string name="speed">Скорость</string>
+
+    <string name="pad">Отступ от краёв экрана</string>
+    <string name="pad_desc">Текст не липнет к краям и скруглённым углам. Число колонок и строк пересчитается</string>
+    <string name="pad_x">По бокам</string>
+    <string name="pad_y">Сверху и снизу</string>
+
+    <string name="glow">Свечение текста (neon glow)</string>
+    <string name="glow_desc">Ореол цветом самого текста, заодно светится курсор. Нужен Android 9+ и немного GPU</string>
+    <string name="glow_size">Размер свечения</string>
+    <string name="glow_strength">Яркость свечения</string>
+
+    <string name="fade">Плавное появление текста</string>
+    <string name="fade_desc">Новые буквы (ls, ввод, вывод команд) проявляются плавно, а не сразу</string>
+    <string name="duration">Длительность</string>
+
+    <string name="bg_title">Фон Termux</string>
+    <string name="bg_desc">Картинка, видео или градиент под текстом терминала</string>
+    <string name="mode_off">Выкл</string>
+    <string name="mode_img">Картинка</string>
+    <string name="mode_vid">Видео</string>
+    <string name="mode_grad">Градиент</string>
+    <string name="bg_none">Файл не выбран</string>
+    <string name="bg_img_picked">Картинка выбрана</string>
+    <string name="bg_vid_picked">Видео выбрано</string>
+    <string name="pick_img">Выбрать картинку</string>
+    <string name="pick_vid">Выбрать видео</string>
+    <string name="remove_file">Убрать файл</string>
+    <string name="remove_video">Убрать видео</string>
+    <string name="grad_hint">Цвет сверху слева и снизу справа</string>
+    <string name="dim">Затемнение фона</string>
+
+    <string name="splash">Заставка при запуске Termux</string>
+    <string name="splash_desc">Видео играет один раз при старте Termux и плавно исчезает. Новые сессии заставку не запускают. Тап по заставке пропускает её</string>
+    <string name="splash_sound">Со звуком</string>
+    <string name="splash_none">Видео не выбрано</string>
+    <string name="splash_picked">Видео выбрано</string>
+
+    <string name="reset">Сбросить все настройки</string>
+    <string name="reset_title">Сбросить все настройки?</string>
+    <string name="reset_msg">Все значения вернутся к настройкам по умолчанию.</string>
+    <string name="reset_ok">Сбросить</string>
+    <string name="cancel">Отмена</string>
+    <string name="toast_reset">Настройки сброшены</string>
+
+    <string name="toast_nopicker">Нет приложения для выбора файла</string>
+    <string name="toast_copying">Копирую файл…</string>
+    <string name="toast_done">Готово</string>
+    <string name="toast_error">Ошибка: %1$s</string>
+    <string name="err_open">не удалось открыть файл</string>
+    <string name="err_not_image">не картинка</string>
+    <string name="err_save">не удалось сохранить файл</string>
+
+    <string name="fmt_dp">%1$d dp</string>
+    <string name="fmt_ms">%1$d мс</string>
+    <string name="fmt_pct">%1$d%%</string>
+</resources>

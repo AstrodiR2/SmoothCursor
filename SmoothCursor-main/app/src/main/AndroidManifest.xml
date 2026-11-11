@@ -2,18 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:label="SmoothCursor"
+        android:label="@string/app_name"
         android:allowBackup="false">
 
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="Плавный курсор в Termux, как в Neovide" />
+        <meta-data android:name="xposeddescription" android:resource="@string/xposed_description" />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
 
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
-            android:label="SmoothCursor"
+            android:label="@string/app_name"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
