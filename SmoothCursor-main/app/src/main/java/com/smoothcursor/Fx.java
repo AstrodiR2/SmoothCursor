@@ -159,21 +159,45 @@ final class Fx {
         return true;
     }
 
-    /** Ставит хук на отрисовку одного «прогона» текста, чтобы отдельные клетки рисовать с анимацией. */
-    static void hookFade(Class<?> rendCls) {
-        XposedBridge.hookAllMethods(rendCls, "drawTextRun", new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam p) {
-                try {
-                    fadeRun(p);
-                } catch (Throwable t) {
-                    if (!fadeErrLogged) {
-                        fadeErrLogged = true;
-                        XposedBridge.log("SmoothCursor: fade error: " + t);
-                    }
+    private static Class<?> fadeCls = null;
+    private static java.util.Set<XC_MethodHook.Unhook> fadeUnhooks = null;
+
+    private static final XC_MethodHook FADE_HOOK = new XC_MethodHook() {
+        @Override
+        protected void beforeHookedMethod(MethodHookParam p) {
+            try {
+                fadeRun(p);
+            } catch (Throwable t) {
+                if (!fadeErrLogged) {
+                    fadeErrLogged = true;
+                    XposedBridge.log("SmoothCursor: fade error: " + t);
                 }
             }
-        });
+        }
+    };
+
+    /**
+     * Запоминает класс рендерера. Сам хук на drawTextRun ставится только когда fade-in включён:
+     * этот метод вызывается сотни раз за кадр, и постоянный хук на нём тормозит весь терминал,
+     * из-за чего курсор рвётся.
+     */
+    static void hookFade(Class<?> rendCls) {
+        fadeCls = rendCls;
+    }
+
+    /** Включает или выключает хук fade-in. Вызывать с UI-потока. */
+    static void setFade(boolean on) {
+        if (fadeCls == null) return;
+        try {
+            if (on && fadeUnhooks == null) {
+                fadeUnhooks = XposedBridge.hookAllMethods(fadeCls, "drawTextRun", FADE_HOOK);
+            } else if (!on && fadeUnhooks != null) {
+                for (XC_MethodHook.Unhook u : fadeUnhooks) u.unhook();
+                fadeUnhooks = null;
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("SmoothCursor: setFade failed: " + t);
+        }
     }
 
     private static void clipOut(Canvas c, float l, float t, float r, float b) {

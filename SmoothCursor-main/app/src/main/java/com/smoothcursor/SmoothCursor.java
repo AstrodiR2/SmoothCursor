@@ -248,6 +248,8 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     cfgTrail = tr;
                     Overlay.onConfig(v, b);
                     boolean fxChanged = Cfg.update(b);
+                    final boolean fade = Cfg.fiOn;
+                    v.post(() -> Fx.setFade(fade));
                     Saver.onCfg();
                     if (changed || fxChanged) v.postInvalidate();
                 }
