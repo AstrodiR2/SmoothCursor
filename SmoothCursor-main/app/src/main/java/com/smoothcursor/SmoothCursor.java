@@ -59,6 +59,10 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static boolean scrollInited = false;
     private static long lastScrollNs = 0;
     private static int cursorTopRow = 0;
+    // Сколько строк эмулятор прокрутил сам (Enter внизу экрана, вывод команд)
+    private static int pendingScroll = 0;
+    // Сдвиг контента в строках за этот кадр: курсор сдвигается вместе с ним, а не телепортируется
+    private static int frameShift = 0;
     private static final String EXTRA_SAVED = "sc_saved";
 
     private static final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -127,6 +131,24 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                         Object r = p.getResult();
                         nativeVisible = !(r instanceof Boolean) || (Boolean) r;
                         p.setResult(false);
+                    }
+                }
+            });
+
+            // Эмулятор сам прокручивает экран, когда курсор внизу. Ловим, на сколько строк,
+            // чтобы текст плыл, а не прыгал.
+            XposedBridge.hookAllMethods(emuCls, "clearScrollCounter", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam p) {
+                    try {
+                        if (!cfgSmoothScroll) return;
+                        Object alt = XposedHelpers.callMethod(p.thisObject, "isAlternateBufferActive");
+                        if (alt instanceof Boolean && (Boolean) alt) return;
+                        Object n = XposedHelpers.callMethod(p.thisObject, "getScrollCounter");
+                        if (n instanceof Integer && (Integer) n > 0) {
+                            pendingScroll = Math.min(1000, pendingScroll + (Integer) n);
+                        }
+                    } catch (Throwable ignored) {
                     }
                 }
             });
@@ -239,9 +261,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     // Скролл Termux двигает topRow целыми строками. Здесь сдвигаем холст на недостающие
     // пиксели и плавно возвращаем в 0, так что текст не телепортируется, а ездит.
     private static void applyScroll(XC_MethodHook.MethodHookParam p) {
+        frameShift = 0;
         Canvas canvas = (Canvas) p.args[1];
         int topRow = (Integer) p.args[2];
         long now = System.nanoTime();
+        int pend = pendingScroll;
+        pendingScroll = 0;
 
         if (!cfgSmoothScroll) {
             scrollOff = 0f;
@@ -258,9 +283,13 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             float tau = 30f + 120f * cfgScrollSpeed / 100f;
             scrollOff *= (float) Math.exp(-dtMs / tau);
             int d = topRow - lastTopRow;
+            // Эмулятор прокрутил сам (мы внизу): это тот же сдвиг, только topRow остался 0.
+            // Большой вывод (cat файла) не анимируем, иначе вечное дрожание.
+            if (topRow == 0 && lastTopRow == 0 && pend > 0 && pend <= 3) d += pend;
             if (d != 0) {
-                float lim = cellH;
+                float lim = cellH * 2f;
                 scrollOff = Math.max(-lim, Math.min(lim, scrollOff + d * (float) cellH));
+                if (Math.abs(d) <= 3) frameShift = d;
             }
         }
         scrollInited = true;
@@ -306,7 +335,16 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
 
         // При скролле курсор едет вместе с текстом (через сдвиг холста), без своей анимации
-        if (cfgSmoothScroll && topRow != cursorTopRow) inited = false;
+        // Раньше тут был сброс (inited = false): курсор телепортировался при каждом сдвиге.
+        // Теперь он едет вместе с контентом и дальше плавно догоняет цель.
+        if (cfgSmoothScroll) {
+            if (Math.abs(topRow - cursorTopRow) > 3) {
+                inited = false;
+            } else if (inited && frameShift != 0) {
+                for (int i = 0; i < 4; i++) cy[i] -= frameShift;
+                lastRow -= frameShift;
+            }
+        }
         cursorTopRow = topRow;
 
         int col = (Integer) XposedHelpers.callMethod(emu, "getCursorCol");
@@ -340,9 +378,10 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             moved = true;
             retarget(tx, ty, cellW, cellH);
             lastCol = col; lastRow = row; lastStyle = style;
-            dtMs = wasMoving ? Math.min((now - lastNs) / 1_000_000f, 50f) : 0f;
+            // На первом кадре движения даём небольшой шаг, а не 0, чтобы старт не был ступенькой
+            dtMs = wasMoving ? Math.min((now - lastNs) / 1_000_000f, 48f) : 8f;
         } else {
-            dtMs = Math.min((now - lastNs) / 1_000_000f, 50f);
+            dtMs = Math.min((now - lastNs) / 1_000_000f, 48f);
         }
         lastNs = now;
 
