@@ -78,6 +78,21 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static float glowMaskRadius = -1f;
     private static boolean glowApplied = false;
     private static boolean glowBroken = false;
+    // Плавное появление текста
+    private static volatile boolean cfgFade = true;
+    private static volatile int cfgFadeMs = 160;
+    private static boolean fadeBroken = false;
+    private static boolean fadeActive = false;
+    private static long fadeUntil = 0L;
+    private static long fNow = 0L;
+    private static int fRowsN = 0, fColsN = 0, fLs = 1, fLsa = 0;
+    private static float fwPx = 1f;
+    private static char[][] fChars, fCur;
+    private static int[] fHash, fCurHash;
+    private static long[][] fBorn, fBornTmp;
+    private static Method mExt, mAlloc, mSpace;
+    private static Field fText;
+
     private static final float[] GLOW_PASSES = {1.0f, 0.6f, 0.35f, 0.2f};
     private static final Paint glowPaint2 = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static float glowMaskRadius2 = -1f;
@@ -161,6 +176,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                         XposedBridge.log("SmoothCursor: scroll error: " + t);
                     }
                     try {
+                        fadeFrame(p);
+                    } catch (Throwable t) {
+                        fadeBroken = true;
+                        XposedBridge.log("SmoothCursor: fade frame error: " + t);
+                    }
+                    try {
                         Overlay.bgBefore(p);
                     } catch (Throwable t) {
                         XposedBridge.log("SmoothCursor: bg error: " + t);
@@ -173,6 +194,10 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     try {
                         Overlay.bgAfter(p);
                     } catch (Throwable ignored) {
+                    }
+                    if (fadeActive) {
+                        View fv = viewRef.get();
+                        if (fv != null) fv.postInvalidateOnAnimation();
                     }
                     try {
                         drawCursor(p);
@@ -203,6 +228,22 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     }
 
     private static void initGlow(ClassLoader cl, Class<?> rendCls) {
+        if (XposedBridge.hookAllMethods(rendCls, "drawTextRun", new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam p) {
+                try {
+                    if (fadeBefore(p)) return;
+                } catch (Throwable t) {
+                    fadeBroken = true;
+                    XposedBridge.log("SmoothCursor: fade disabled, error: " + t);
+                }
+                glowBefore(p.thisObject, p.method, p.args);
+            }
+        }).isEmpty()) {
+            glowBroken = true;
+            fadeBroken = true;
+            XposedBridge.log("SmoothCursor: drawTextRun NOT FOUND, glow/fade off");
+        }
         Class<?> ts = XposedHelpers.findClass("com.termux.terminal.TextStyle", cl);
         tsFore = XposedHelpers.findMethodExact(ts, "decodeForeColor", long.class);
         tsBack = XposedHelpers.findMethodExact(ts, "decodeBackColor", long.class);
@@ -226,23 +267,14 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         }
         if (textPaintField == null) throw new IllegalStateException("text paint not found");
         glowPaint.setStyle(Paint.Style.FILL);
-        if (XposedBridge.hookAllMethods(rendCls, "drawTextRun", new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam p) {
-                glowBefore(p);
-            }
-        }).isEmpty()) {
-            glowBroken = true;
-            XposedBridge.log("SmoothCursor: drawTextRun NOT FOUND, glow off");
-        }
     }
 
     // Перед отрисовкой каждого куска текста ставим тень цветом самого текста.
     // Ячейки с цветным фоном и инверсией пропускаем, чтобы вокруг подсветки vim не было ореола.
-    private static void glowBefore(XC_MethodHook.MethodHookParam p) {
+    private static void glowBefore(Object self, java.lang.reflect.Member method, Object[] args) {
         if (glowBroken) return;
         try {
-            Paint paint = (Paint) textPaintField.get(p.thisObject);
+            Paint paint = (Paint) textPaintField.get(self);
             if (paint == null) return;
             if (!cfgGlow) {
                 if (glowApplied) {
@@ -255,7 +287,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             boolean hasStyle = false;
             boolean reverse = false;
             int[] palette = null;
-            for (Object a : p.args) {
+            for (Object a : args) {
                 if (a instanceof Long) {
                     style = (Long) a;
                     hasStyle = true;
@@ -289,12 +321,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             int shadowColor = (glowAlpha << 24) | (color & 0x00FFFFFF);
             // Одна тень от тонких глифов почти невидима (пик ~10%). Рисуем текст несколькими
             // проходами с убывающим радиусом: тени накладываются и дают плотное свечение.
-            boolean hasCursor = p.args.length > 9 && p.args[9] instanceof Integer && (Integer) p.args[9] != 0;
-            if (!hasCursor && p.method != null) {
+            boolean hasCursor = args.length > 9 && args[9] instanceof Integer && (Integer) args[9] != 0;
+            if (!hasCursor && method != null) {
                 for (float f : GLOW_PASSES) {
                     paint.setShadowLayer(Math.max(1f, glowRadiusPx * f), 0f, 0f, shadowColor);
                     try {
-                        XposedBridge.invokeOriginalMethod(p.method, p.thisObject, p.args);
+                        XposedBridge.invokeOriginalMethod(method, self, args);
                     } catch (Throwable ignored) {
                     }
                 }
@@ -305,6 +337,204 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             glowBroken = true;
             XposedBridge.log("SmoothCursor: glow disabled, error: " + t);
         }
+    }
+
+
+    // Раз за кадр: сравниваем экран с прошлым кадром (с учётом сдвига при скролле)
+    // и запоминаем время появления каждого нового символа
+    private static void fadeFrame(XC_MethodHook.MethodHookParam p) throws Throwable {
+        fadeActive = false;
+        if (!cfgFade || fadeBroken) return;
+        Object rend = p.thisObject;
+        Object emu = p.args[0];
+        int topRow = (Integer) p.args[2];
+        int rows = XposedHelpers.getIntField(emu, "mRows");
+        int cols = XposedHelpers.getIntField(emu, "mColumns");
+        fwPx = XposedHelpers.getFloatField(rend, "mFontWidth");
+        fLs = Math.max(1, XposedHelpers.getIntField(rend, "mFontLineSpacing"));
+        fLsa = XposedHelpers.getIntField(rend, "mFontLineSpacingAndAscent");
+        Object scr = XposedHelpers.callMethod(emu, "getScreen");
+        if (mExt == null) {
+            mExt = XposedHelpers.findMethodExact(scr.getClass(), "externalToInternalRow", int.class);
+            mAlloc = XposedHelpers.findMethodExact(scr.getClass(), "allocateFullLineIfNecessary", int.class);
+        }
+        long now = System.nanoTime();
+        fNow = now;
+        boolean reset = fBorn == null || rows != fRowsN || cols != fColsN;
+        if (reset) {
+            fChars = new char[rows][cols];
+            fCur = new char[rows][cols];
+            fHash = new int[rows];
+            fCurHash = new int[rows];
+            fBorn = new long[rows][cols];
+            fBornTmp = new long[rows][cols];
+        }
+        boolean changed = reset;
+        for (int r = 0; r < rows; r++) {
+            Object line = mAlloc.invoke(scr, mExt.invoke(scr, topRow + r));
+            if (mSpace == null) {
+                mSpace = XposedHelpers.findMethodExact(line.getClass(), "getSpaceUsed");
+                fText = XposedHelpers.findField(line.getClass(), "mText");
+            }
+            char[] t = (char[]) fText.get(line);
+            int used = (Integer) mSpace.invoke(line);
+            int n = Math.min(Math.min(used, t.length), cols);
+            char[] c = fCur[r];
+            int h = 0;
+            for (int i = 0; i < cols; i++) {
+                char ch = i < n ? t[i] : ' ';
+                c[i] = ch;
+                h = 31 * h + ch;
+            }
+            fCurHash[r] = h;
+            if (reset) {
+                System.arraycopy(c, 0, fChars[r], 0, cols);
+                fHash[r] = h;
+            } else if (h != fHash[r]) {
+                changed = true;
+            }
+        }
+        if (reset) {
+            fRowsRowsSet(rows, cols);
+            return;
+        }
+        if (changed) {
+            int blank = 0;
+            for (int i = 0; i < cols; i++) blank = 31 * blank + ' ';
+            int bestK = 0, bestScore = -1;
+            for (int d = 0; d < rows; d++) {
+                for (int sg = 0; sg < (d == 0 ? 1 : 2); sg++) {
+                    int k = sg == 0 ? d : -d;
+                    int score = 0;
+                    for (int r = 0; r < rows; r++) {
+                        int s = r + k;
+                        if (s < 0 || s >= rows) continue;
+                        if (fCurHash[r] == fHash[s] && fCurHash[r] != blank) score++;
+                    }
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestK = k;
+                    }
+                }
+            }
+            int fresh = 0;
+            for (int r = 0; r < rows; r++) {
+                int s = r + bestK;
+                boolean ok = s >= 0 && s < rows;
+                char[] c = fCur[r];
+                for (int i = 0; i < cols; i++) {
+                    char ch = c[i];
+                    char prev = ok ? fChars[s][i] : ' ';
+                    if (ok && prev == ch) {
+                        fBornTmp[r][i] = fBorn[s][i];
+                    } else if (ch == ' ' || prev != ' ') {
+                        // пробел или замена символа на месте (прогресс-бары, спиннеры): без анимации
+                        fBornTmp[r][i] = 0L;
+                    } else {
+                        fBornTmp[r][i] = now;
+                        fresh++;
+                    }
+                }
+            }
+            // clear, открытие vim и т.п.: меняется пол-экрана сразу, не анимируем
+            if (fresh > rows * cols / 3) {
+                for (int r = 0; r < rows; r++) {
+                    for (int i = 0; i < cols; i++) {
+                        if (fBornTmp[r][i] == now) fBornTmp[r][i] = 0L;
+                    }
+                }
+                fresh = 0;
+            }
+            if (fresh > 0) fadeUntil = now + cfgFadeMs * 1000000L;
+            long[][] tb = fBorn;
+            fBorn = fBornTmp;
+            fBornTmp = tb;
+            char[][] tc = fChars;
+            fChars = fCur;
+            fCur = tc;
+            int[] th = fHash;
+            fHash = fCurHash;
+            fCurHash = th;
+        }
+        fadeActive = now < fadeUntil;
+    }
+
+    private static void fRowsRowsSet(int rows, int cols) {
+        fRowsN = rows;
+        fColsN = cols;
+        fadeUntil = 0L;
+    }
+
+    private static int fadeLevel(long born, long now, long fadeNs) {
+        if (born == 0L) return 16;
+        float t = (now - born) / (float) fadeNs;
+        if (t >= 1f) return 16;
+        if (t < 0f) t = 0f;
+        float s = t * t * (3f - 2f * t);
+        return (int) (s * 16f);
+    }
+
+    // Рисуем только что появившиеся символы через слой с прозрачностью.
+    // true = сами всё нарисовали, оригинальный drawTextRun не нужен
+    private static boolean fadeBefore(XC_MethodHook.MethodHookParam p) throws Throwable {
+        if (!cfgFade || fadeBroken || !fadeActive || fBorn == null) return false;
+        Object[] a = p.args;
+        if (a.length < 13 || !(a[0] instanceof Canvas)) return false;
+        int startCol = (Integer) a[4];
+        int runCols = (Integer) a[5];
+        int startIdx = (Integer) a[6];
+        int runChars = (Integer) a[7];
+        float mes = (Float) a[8];
+        int cursor = (Integer) a[9];
+        if (cursor != 0 || runCols != runChars || runCols <= 0) return false;
+        float fw = fwPx;
+        if (Math.abs(mes / fw - runCols) > 0.01f) return false;
+        float y = (Float) a[3];
+        int row = Math.round((y - fLsa) / fLs) - 1;
+        if (row < 0 || row >= fRowsN || startCol < 0 || startCol + runCols > fColsN) return false;
+        long fadeNs = Math.max(1, cfgFadeMs) * 1000000L;
+        long now = fNow;
+        long[] br = fBorn[row];
+        boolean any = false;
+        for (int i = 0; i < runCols; i++) {
+            long b = br[startCol + i];
+            if (b != 0L && now - b < fadeNs) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) return false;
+        Canvas canvas = (Canvas) a[0];
+        int i = 0;
+        while (i < runCols) {
+            int lvl = fadeLevel(br[startCol + i], now, fadeNs);
+            int j = i + 1;
+            while (j < runCols && fadeLevel(br[startCol + j], now, fadeNs) == lvl) j++;
+            if (lvl > 0) {
+                Object[] b = a.clone();
+                int cols = j - i;
+                b[4] = startCol + i;
+                b[5] = cols;
+                b[6] = startIdx + i;
+                b[7] = cols;
+                b[8] = cols * fw;
+                int save = -1;
+                if (lvl < 16) {
+                    float pad = glowRadiusPx * 2f + fw;
+                    save = canvas.saveLayerAlpha((startCol + i) * fw - pad, y - fLs - pad,
+                            (startCol + j) * fw + pad, y + pad, lvl * 255 / 16);
+                }
+                try {
+                    glowBefore(p.thisObject, p.method, b);
+                    XposedBridge.invokeOriginalMethod(p.method, p.thisObject, b);
+                } finally {
+                    if (save >= 0) canvas.restoreToCount(save);
+                }
+            }
+            i = j;
+        }
+        p.setResult(null);
+        return true;
     }
 
     // Раз в ~1.5 c тихо спрашиваем настройки у приложения модуля
@@ -329,6 +559,8 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     boolean gOn = b.getBoolean("glow_on", false);
                     int gR = b.getInt("glow_radius", 6);
                     int gI = b.getInt("glow_intensity", 70);
+                    cfgFade = b.getBoolean("fade_on", true);
+                    cfgFadeMs = Math.max(50, b.getInt("fade_ms", 160));
                     boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline || tr != cfgTrail
                             || ss != cfgSmoothScroll || sv != cfgScrollSpeed
                             || gOn != cfgGlow || gR != cfgGlowRadius || gI != cfgGlowIntensity;

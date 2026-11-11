@@ -30,6 +30,10 @@ public class SettingsProvider extends ContentProvider {
     public static final String K_GLOW_RADIUS = "glow_radius";
     public static final String K_GLOW_INTENSITY = "glow_intensity";
 
+    // Плавное появление текста
+    public static final String K_FADE_ON = "fade_on";
+    public static final String K_FADE_MS = "fade_ms";
+
     // Фон: 0 выкл, 1 картинка, 2 видео, 3 градиент
     public static final String K_BG_MODE = "bg_mode";
     public static final String K_BG_DIM = "bg_dim";
@@ -53,6 +57,9 @@ public class SettingsProvider extends ContentProvider {
     public static final boolean D_GLOW_ON = false;
     public static final int D_GLOW_RADIUS = 6;
     public static final int D_GLOW_INTENSITY = 70;
+
+    public static final boolean D_FADE_ON = true;
+    public static final int D_FADE_MS = 160;
 
     public static final int D_BG_MODE = 0;
     public static final int D_BG_DIM = 35;
@@ -88,6 +95,8 @@ public class SettingsProvider extends ContentProvider {
         b.putBoolean(K_GLOW_ON, sp.getBoolean(K_GLOW_ON, D_GLOW_ON));
         b.putInt(K_GLOW_RADIUS, sp.getInt(K_GLOW_RADIUS, D_GLOW_RADIUS));
         b.putInt(K_GLOW_INTENSITY, sp.getInt(K_GLOW_INTENSITY, D_GLOW_INTENSITY));
+        b.putBoolean(K_FADE_ON, sp.getBoolean(K_FADE_ON, D_FADE_ON));
+        b.putInt(K_FADE_MS, sp.getInt(K_FADE_MS, D_FADE_MS));
         b.putInt(K_BG_MODE, sp.getInt(K_BG_MODE, D_BG_MODE));
         b.putInt(K_BG_DIM, sp.getInt(K_BG_DIM, D_BG_DIM));
         b.putInt(K_BG_C1, sp.getInt(K_BG_C1, D_BG_C1));

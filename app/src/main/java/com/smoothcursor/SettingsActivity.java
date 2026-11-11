@@ -49,9 +49,9 @@ public class SettingsActivity extends Activity {
     private SeekBar sbH, sbS, sbV, sbOutline, sbTrail, sbScroll;
     private TextView tvOutline, tvTrail, tvScroll;
     private Switch swScroll;
-    private Switch swPad, swGlow;
-    private SeekBar sbPadX, sbPadY, sbGlowR, sbGlowI;
-    private TextView tvPadX, tvPadY, tvGlowR, tvGlowI;
+    private Switch swPad, swGlow, swFade;
+    private SeekBar sbPadX, sbPadY, sbGlowR, sbGlowI, sbFade;
+    private TextView tvPadX, tvPadY, tvGlowR, tvGlowI, tvFade;
 
     private static final int REQ_IMG = 101;
     private static final int REQ_VID = 102;
@@ -245,6 +245,21 @@ public class SettingsActivity extends Activity {
         sbGlowI.setMax(100);
         cG.addView(sbGlowI);
 
+        // ---- Плавное появление текста
+        LinearLayout cF = card(root);
+        swFade = new Switch(this);
+        swFade.setText("Плавное появление текста");
+        swFade.setTextColor(TEXT);
+        swFade.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        cF.addView(swFade);
+        cF.addView(text("Новые буквы (ls, ввод, вывод команд) проявляются плавно, а не сразу", 12, SUB, false));
+        cF.addView(text("Длительность", 14, SUB, false));
+        tvFade = text("160 мс", 14, SUB, false);
+        cF.addView(tvFade);
+        sbFade = new SeekBar(this);
+        sbFade.setMax(450);
+        cF.addView(sbFade);
+
         // ---- Фон Termux
         LinearLayout cB = card(root);
         cB.addView(text("Фон Termux", 16, TEXT, false));
@@ -411,6 +426,18 @@ public class SettingsActivity extends Activity {
             }
         });
 
+        swFade.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_FADE_ON, checked).apply();
+            sbFade.setEnabled(checked);
+        });
+        sbFade.setOnSeekBarChangeListener(new Seek() {
+            void on(int p) {
+                tvFade.setText((p + 50) + " мс");
+                sp.edit().putInt(SettingsProvider.K_FADE_MS, p + 50).apply();
+            }
+        });
+
         rgBg.setOnCheckedChangeListener((g, id) -> {
             if (updating) return;
             View rb = g.findViewById(id);
@@ -554,6 +581,13 @@ public class SettingsActivity extends Activity {
         sbGlowI.setEnabled(glowOn);
         tvGlowR.setText(glowR + " dp");
         tvGlowI.setText(glowI + "%");
+
+        boolean fadeOn = sp.getBoolean(SettingsProvider.K_FADE_ON, SettingsProvider.D_FADE_ON);
+        int fadeMs = sp.getInt(SettingsProvider.K_FADE_MS, SettingsProvider.D_FADE_MS);
+        swFade.setChecked(fadeOn);
+        sbFade.setProgress(Math.max(0, fadeMs - 50));
+        sbFade.setEnabled(fadeOn);
+        tvFade.setText(fadeMs + " мс");
 
         swTheme.setChecked(useTheme);
         Color.colorToHSV(color, hsv);
