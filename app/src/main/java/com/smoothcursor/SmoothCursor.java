@@ -78,6 +78,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static float glowMaskRadius = -1f;
     private static boolean glowApplied = false;
     private static boolean glowBroken = false;
+    private static final float[] GLOW_PASSES = {1.0f, 0.6f, 0.35f, 0.2f};
+    private static final Paint glowPaint2 = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static float glowMaskRadius2 = -1f;
     private static Field textPaintField;
     private static Method tsFore, tsBack, tsEffect;
     private static int idxBackground = 257;
@@ -283,7 +286,20 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             if ((fore & 0xFF000000) == 0xFF000000) color = fore;
             else if (fore >= 0 && fore < palette.length) color = palette[fore];
             else return;
-            paint.setShadowLayer(glowRadiusPx, 0f, 0f, (glowAlpha << 24) | (color & 0x00FFFFFF));
+            int shadowColor = (glowAlpha << 24) | (color & 0x00FFFFFF);
+            // Одна тень от тонких глифов почти невидима (пик ~10%). Рисуем текст несколькими
+            // проходами с убывающим радиусом: тени накладываются и дают плотное свечение.
+            boolean hasCursor = p.args.length > 9 && p.args[9] instanceof Integer && (Integer) p.args[9] != 0;
+            if (!hasCursor && p.method != null) {
+                for (float f : GLOW_PASSES) {
+                    paint.setShadowLayer(Math.max(1f, glowRadiusPx * f), 0f, 0f, shadowColor);
+                    try {
+                        XposedBridge.invokeOriginalMethod(p.method, p.thisObject, p.args);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            paint.setShadowLayer(Math.max(1f, glowRadiusPx * 0.12f), 0f, 0f, shadowColor);
             glowApplied = true;
         } catch (Throwable t) {
             glowBroken = true;
@@ -474,6 +490,14 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 glowPaint.setColor(base);
                 glowPaint.setAlpha(glowAlpha);
                 canvas.drawPath(path, glowPaint);
+                float gr2 = Math.max(1f, gr * 0.4f);
+                if (gr2 != glowMaskRadius2) {
+                    glowPaint2.setMaskFilter(new BlurMaskFilter(gr2, BlurMaskFilter.Blur.NORMAL));
+                    glowMaskRadius2 = gr2;
+                }
+                glowPaint2.setColor(base);
+                glowPaint2.setAlpha(glowAlpha);
+                canvas.drawPath(path, glowPaint2);
             }
 
             fillPaint.setColor(base);
