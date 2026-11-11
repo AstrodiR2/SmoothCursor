@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">SmoothCursor</string>
+    <string name="xposed_description">Smooth cursor in Termux, like in Neovide</string>
+
+    <string name="subtitle">Termux cursor settings</string>
+
+    <string name="theme_color">Color from Termux theme</string>
+    <string name="hue">Hue</string>
+    <string name="saturation">Saturation</string>
+    <string name="brightness">Brightness</string>
+
+    <string name="outline">Outline intensity</string>
+    <string name="trail">Trail intensity</string>
+    <string name="trail_desc">Higher values give a longer, more visible trail and a smoother glide</string>
+
+    <string name="scroll">Smooth scrolling</string>
+    <string name="scroll_desc">Text glides while scrolling instead of jumping line by line</string>
+    <string name="speed">Speed</string>
+
+    <string name="pad">Edge padding</string>
+    <string name="pad_desc">Keeps text away from screen edges and rounded corners. Column and row counts are recalculated</string>
+    <string name="pad_x">Left and right</string>
+    <string name="pad_y">Top and bottom</string>
+
+    <string name="glow">Text glow (neon)</string>
+    <string name="glow_desc">A halo in the text\'s own color; the cursor glows too. Needs Android 9+ and a bit of GPU</string>
+    <string name="glow_size">Glow size</string>
+    <string name="glow_strength">Glow brightness</string>
+
+    <string name="fade">Smooth text appearance</string>
+    <string name="fade_desc">New characters (ls, typing, command output) fade in instead of appearing instantly</string>
+    <string name="duration">Duration</string>
+
+    <string name="bg_title">Termux background</string>
+    <string name="bg_desc">Image, video or gradient behind the terminal text</string>
+    <string name="mode_off">Off</string>
+    <string name="mode_img">Image</string>
+    <string name="mode_vid">Video</string>
+    <string name="mode_grad">Gradient</string>
+    <string name="bg_none">No file selected</string>
+    <string name="bg_img_picked">Image selected</string>
+    <string name="bg_vid_picked">Video selected</string>
+    <string name="pick_img">Choose image</string>
+    <string name="pick_vid">Choose video</string>
+    <string name="remove_file">Remove file</string>
+    <string name="remove_video">Remove video</string>
+    <string name="grad_hint">Top-left and bottom-right colors</string>
+    <string name="dim">Background dimming</string>
+
+    <string name="splash">Startup splash</string>
+    <string name="splash_desc">The video plays once when Termux starts and fades out. New sessions don\'t replay it. Tap the splash to skip</string>
+    <string name="splash_sound">With sound</string>
+    <string name="splash_none">No video selected</string>
+    <string name="splash_picked">Video selected</string>
+
+    <string name="reset">Reset all settings</string>
+    <string name="reset_title">Reset all settings?</string>
+    <string name="reset_msg">All values will return to their defaults.</string>
+    <string name="reset_ok">Reset</string>
+    <string name="cancel">Cancel</string>
+    <string name="toast_reset">Settings reset</string>
+
+    <string name="toast_nopicker">No app available to pick a file</string>
+    <string name="toast_copying">Copying file…</string>
+    <string name="toast_done">Done</string>
+    <string name="toast_error">Error: %1$s</string>
+    <string name="err_open">couldn\'t open the file</string>
+    <string name="err_not_image">not an image</string>
+    <string name="err_save">couldn\'t save the file</string>
+
+    <string name="fmt_dp">%1$d dp</string>
+    <string name="fmt_ms">%1$d ms</string>
+    <string name="fmt_pct">%1$d%%</string>
+</resources>

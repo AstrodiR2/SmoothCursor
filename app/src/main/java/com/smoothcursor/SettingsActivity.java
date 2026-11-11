@@ -2,14 +2,17 @@ package com.smoothcursor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Bundle;
@@ -17,6 +20,7 @@ import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -36,10 +40,16 @@ import java.io.InputStream;
 
 public class SettingsActivity extends Activity {
 
-    private static final int BG = 0xFF121212;
-    private static final int CARD = 0xFF1E1E1E;
-    private static final int TEXT = 0xFFFFFFFF;
-    private static final int SUB = 0xFF9AA0A6;
+    private static final int BG = 0xFF0E0E12;
+    private static final int CARD = 0xFF1A1A20;
+    private static final int CARD_STROKE = 0xFF2A2A33;
+    private static final int FIELD = 0xFF24242C;
+    private static final int TEXT = 0xFFF2F2F5;
+    private static final int SUB = 0xFF9A9AA6;
+    private static final int ACCENT = 0xFF8C9EFF;
+    private static final int ACCENT_ON = 0xFF0E0E12;
+    private static final int DANGER = 0xFFFF6B7A;
+    private static final int OFF = 0xFF4A4A55;
 
     private SharedPreferences sp;
     private Switch swTheme;
@@ -69,8 +79,47 @@ public class SettingsActivity extends Activity {
     private boolean updating = false;
     private final float[] hsv = new float[3];
 
+    // ---------------------------------------------------------------- UI-хелперы
+
+    // Кнопка, которая сама тускнеет при setEnabled(false)
+    private static class PillButton extends Button {
+        PillButton(Context c) {
+            super(c);
+        }
+
+        @Override
+        public void setEnabled(boolean e) {
+            super.setEnabled(e);
+            setAlpha(e ? 1f : 0.4f);
+        }
+    }
+
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private String dpS(int v) {
+        return getString(R.string.fmt_dp, v);
+    }
+
+    private String msS(int v) {
+        return getString(R.string.fmt_ms, v);
+    }
+
+    private String pctS(int v) {
+        return getString(R.string.fmt_pct, v);
+    }
+
+    private ColorStateList enabledTint(int on, int off) {
+        return new ColorStateList(
+                new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}},
+                new int[]{off, on});
+    }
+
+    private ColorStateList checkedTint(int on, int off) {
+        return new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                new int[]{on, off});
     }
 
     private TextView text(String s, float size, int color, boolean bold) {
@@ -85,27 +134,137 @@ public class SettingsActivity extends Activity {
     private LinearLayout card(LinearLayout parent) {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(16), dp(16), dp(16), dp(16));
+        c.setPadding(dp(18), dp(16), dp(18), dp(18));
         GradientDrawable gd = new GradientDrawable();
         gd.setColor(CARD);
-        gd.setCornerRadius(dp(20));
+        gd.setCornerRadius(dp(24));
+        gd.setStroke(dp(1), CARD_STROKE);
         c.setBackground(gd);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(16);
+        lp.topMargin = dp(14);
         parent.addView(c, lp);
         return c;
     }
 
-    private SeekBar labeledSeek(LinearLayout parent, String name, int max) {
-        TextView tv = text(name, 14, SUB, false);
-        tv.setPadding(0, dp(12), 0, 0);
-        parent.addView(tv);
+    // Заголовок карточки без переключателя
+    private void head(LinearLayout card, int titleRes, int descRes) {
+        card.addView(text(getString(titleRes), 16, TEXT, true));
+        if (descRes != 0) desc(card, descRes);
+    }
+
+    private void desc(LinearLayout card, int descRes) {
+        TextView d = text(getString(descRes), 12.5f, SUB, false);
+        d.setLineSpacing(0, 1.1f);
+        d.setPadding(0, dp(4), 0, 0);
+        card.addView(d);
+    }
+
+    private Switch sw(LinearLayout card, int titleRes) {
+        Switch s = new Switch(this);
+        s.setText(titleRes);
+        s.setTextColor(TEXT);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setTypeface(null, Typeface.BOLD);
+        s.setMinHeight(dp(40));
+        s.setThumbTintList(checkedTint(ACCENT, 0xFFB4B4BE));
+        s.setTrackTintList(checkedTint((ACCENT & 0x00FFFFFF) | 0x66000000, OFF));
+        card.addView(s);
+        return s;
+    }
+
+    // Строка «подпись слева — значение справа»
+    private TextView row(LinearLayout card, int labelRes, boolean big) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(0, big ? 0 : dp(14), 0, 0);
+        TextView l = text(getString(labelRes), big ? 16 : 14, big ? TEXT : SUB, big);
+        r.addView(l, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView v = text("", 14, ACCENT, true);
+        r.addView(v);
+        card.addView(r);
+        return v;
+    }
+
+    private SeekBar seek(LinearLayout card, int max) {
         SeekBar sb = new SeekBar(this);
         sb.setMax(max);
-        parent.addView(sb, new LinearLayout.LayoutParams(
+        sb.setProgressTintList(enabledTint(ACCENT, OFF));
+        sb.setThumbTintList(enabledTint(ACCENT, OFF));
+        sb.setProgressBackgroundTintList(ColorStateList.valueOf(OFF));
+        sb.setPadding(dp(14), dp(6), dp(14), dp(6));
+        card.addView(sb, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         return sb;
+    }
+
+    private SeekBar labeledSeek(LinearLayout parent, int nameRes, int max) {
+        TextView tv = text(getString(nameRes), 14, SUB, false);
+        tv.setPadding(0, dp(14), 0, 0);
+        parent.addView(tv);
+        return seek(parent, max);
+    }
+
+    private EditText hexField(String hint) {
+        EditText e = new EditText(this);
+        e.setSingleLine(true);
+        e.setTextColor(TEXT);
+        e.setHintTextColor(SUB);
+        e.setHint(hint);
+        e.setTypeface(Typeface.MONOSPACE);
+        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        e.setPadding(dp(14), dp(10), dp(14), dp(10));
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(FIELD);
+        gd.setCornerRadius(dp(14));
+        e.setBackground(gd);
+        e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(7)});
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        e.setLayoutParams(lp);
+        return e;
+    }
+
+    // style: 0 — залитая, 1 — тональная, 2 — опасная
+    private Button btn(int textRes, int style) {
+        PillButton b = new PillButton(this);
+        b.setText(textRes);
+        b.setAllCaps(false);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setTypeface(null, Typeface.BOLD);
+        b.setMinHeight(dp(46));
+        b.setMinimumHeight(dp(46));
+        b.setStateListAnimator(null);
+        GradientDrawable gd = new GradientDrawable();
+        gd.setCornerRadius(dp(23));
+        if (style == 0) {
+            gd.setColor(ACCENT);
+            b.setTextColor(ACCENT_ON);
+        } else if (style == 1) {
+            gd.setColor((ACCENT & 0x00FFFFFF) | 0x26000000);
+            b.setTextColor(ACCENT);
+        } else {
+            gd.setColor((DANGER & 0x00FFFFFF) | 0x1F000000);
+            gd.setStroke(dp(1), (DANGER & 0x00FFFFFF) | 0x66000000);
+            b.setTextColor(DANGER);
+        }
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), gd, null));
+        return b;
+    }
+
+    private void btnRow(LinearLayout parent, Button a, Button c) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setPadding(0, dp(12), 0, 0);
+        LinearLayout.LayoutParams la = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        la.rightMargin = dp(5);
+        LinearLayout.LayoutParams lc = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lc.leftMargin = dp(5);
+        r.addView(a, la);
+        r.addView(c, lc);
+        parent.addView(r);
     }
 
     private abstract static class Seek implements SeekBar.OnSeekBarChangeListener {
@@ -125,27 +284,37 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    // ---------------------------------------------------------------- onCreate
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         sp = getSharedPreferences(SettingsProvider.PREFS, MODE_PRIVATE);
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(BG);
+        scroll.setFillViewport(true);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(48), dp(20), dp(32));
+        root.setPadding(dp(18), dp(44), dp(18), dp(32));
         scroll.addView(root);
 
-        root.addView(text("SmoothCursor", 30, TEXT, true));
-        root.addView(text("Настройки курсора в Termux", 14, SUB, false));
+        root.addView(text(getString(R.string.app_name), 32, TEXT, true));
+        root.addView(text(getString(R.string.subtitle), 14, SUB, false));
+        View bar = new View(this);
+        GradientDrawable barBg = new GradientDrawable();
+        barBg.setColor(ACCENT);
+        barBg.setCornerRadius(dp(2));
+        bar.setBackground(barBg);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(dp(40), dp(4));
+        barLp.topMargin = dp(14);
+        root.addView(bar, barLp);
 
+        // ---- Цвет
         LinearLayout c1 = card(root);
-        swTheme = new Switch(this);
-        swTheme.setText("Цвет из темы Termux");
-        swTheme.setTextColor(TEXT);
-        swTheme.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        c1.addView(swTheme);
+        swTheme = sw(c1, R.string.theme_color);
 
         colorBox = new LinearLayout(this);
         colorBox.setOrientation(LinearLayout.VERTICAL);
@@ -153,126 +322,80 @@ public class SettingsActivity extends Activity {
 
         View swatch = new View(this);
         swatchBg = new GradientDrawable();
-        swatchBg.setCornerRadius(dp(12));
+        swatchBg.setCornerRadius(dp(14));
+        swatchBg.setStroke(dp(1), CARD_STROKE);
         swatch.setBackground(swatchBg);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(48));
         slp.topMargin = dp(16);
         colorBox.addView(swatch, slp);
 
-        hex = new EditText(this);
-        hex.setSingleLine(true);
-        hex.setTextColor(TEXT);
-        hex.setHintTextColor(SUB);
-        hex.setHint("#RRGGBB");
-        hex.setFilters(new InputFilter[]{new InputFilter.LengthFilter(7)});
+        hex = hexField("#RRGGBB");
         colorBox.addView(hex);
 
-        sbH = labeledSeek(colorBox, "Оттенок", 360);
-        sbS = labeledSeek(colorBox, "Насыщенность", 100);
-        sbV = labeledSeek(colorBox, "Яркость", 100);
+        sbH = labeledSeek(colorBox, R.string.hue, 360);
+        sbS = labeledSeek(colorBox, R.string.saturation, 100);
+        sbV = labeledSeek(colorBox, R.string.brightness, 100);
 
+        // ---- Контур
         LinearLayout c2 = card(root);
-        c2.addView(text("Интенсивность контура", 16, TEXT, false));
-        tvOutline = text("0%", 14, SUB, false);
-        c2.addView(tvOutline);
-        sbOutline = new SeekBar(this);
-        sbOutline.setMax(100);
-        c2.addView(sbOutline);
+        tvOutline = row(c2, R.string.outline, true);
+        sbOutline = seek(c2, 100);
 
+        // ---- Шлейф
         LinearLayout cT = card(root);
-        cT.addView(text("Интенсивность шлейфа", 16, TEXT, false));
-        cT.addView(text("Чем выше, тем длиннее и заметнее след, и тем плавнее перелёт", 12, SUB, false));
-        tvTrail = text("50%", 14, SUB, false);
-        cT.addView(tvTrail);
-        sbTrail = new SeekBar(this);
-        sbTrail.setMax(100);
-        cT.addView(sbTrail);
+        tvTrail = row(cT, R.string.trail, true);
+        desc(cT, R.string.trail_desc);
+        sbTrail = seek(cT, 100);
 
+        // ---- Скроллинг
         LinearLayout cS = card(root);
-        swScroll = new Switch(this);
-        swScroll.setText("Плавный скроллинг");
-        swScroll.setTextColor(TEXT);
-        swScroll.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        cS.addView(swScroll);
-        cS.addView(text("Текст плавно ездит при прокрутке, а не перескакивает по строкам", 12, SUB, false));
-        tvScroll = text("50%", 14, SUB, false);
-        tvScroll.setPadding(0, dp(12), 0, 0);
-        cS.addView(tvScroll);
-        sbScroll = new SeekBar(this);
-        sbScroll.setMax(100);
-        cS.addView(sbScroll);
+        swScroll = sw(cS, R.string.scroll);
+        desc(cS, R.string.scroll_desc);
+        tvScroll = row(cS, R.string.speed, false);
+        sbScroll = seek(cS, 100);
 
         // ---- Отступ внутри терминала
         LinearLayout cP = card(root);
-        swPad = new Switch(this);
-        swPad.setText("Отступ от краёв экрана");
-        swPad.setTextColor(TEXT);
-        swPad.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        cP.addView(swPad);
-        cP.addView(text("Текст не липнет к краям и скруглённым углам. Число колонок и строк пересчитается", 12, SUB, false));
-        cP.addView(text("По бокам", 14, SUB, false));
-        tvPadX = text("8 dp", 14, SUB, false);
-        cP.addView(tvPadX);
-        sbPadX = new SeekBar(this);
-        sbPadX.setMax(48);
-        cP.addView(sbPadX);
-        cP.addView(text("Сверху и снизу", 14, SUB, false));
-        tvPadY = text("8 dp", 14, SUB, false);
-        cP.addView(tvPadY);
-        sbPadY = new SeekBar(this);
-        sbPadY.setMax(48);
-        cP.addView(sbPadY);
+        swPad = sw(cP, R.string.pad);
+        desc(cP, R.string.pad_desc);
+        tvPadX = row(cP, R.string.pad_x, false);
+        sbPadX = seek(cP, 48);
+        tvPadY = row(cP, R.string.pad_y, false);
+        sbPadY = seek(cP, 48);
 
         // ---- Свечение текста
         LinearLayout cG = card(root);
-        swGlow = new Switch(this);
-        swGlow.setText("Свечение текста (neon glow)");
-        swGlow.setTextColor(TEXT);
-        swGlow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        cG.addView(swGlow);
-        cG.addView(text("Ореол цветом самого текста, заодно светится курсор. Нужен Android 9+ и немного GPU", 12, SUB, false));
-        cG.addView(text("Размер свечения", 14, SUB, false));
-        tvGlowR = text("6 dp", 14, SUB, false);
-        cG.addView(tvGlowR);
-        sbGlowR = new SeekBar(this);
-        sbGlowR.setMax(30);
-        cG.addView(sbGlowR);
-        cG.addView(text("Яркость свечения", 14, SUB, false));
-        tvGlowI = text("70%", 14, SUB, false);
-        cG.addView(tvGlowI);
-        sbGlowI = new SeekBar(this);
-        sbGlowI.setMax(100);
-        cG.addView(sbGlowI);
+        swGlow = sw(cG, R.string.glow);
+        desc(cG, R.string.glow_desc);
+        tvGlowR = row(cG, R.string.glow_size, false);
+        sbGlowR = seek(cG, 30);
+        tvGlowI = row(cG, R.string.glow_strength, false);
+        sbGlowI = seek(cG, 100);
 
         // ---- Плавное появление текста
         LinearLayout cF = card(root);
-        swFade = new Switch(this);
-        swFade.setText("Плавное появление текста");
-        swFade.setTextColor(TEXT);
-        swFade.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        cF.addView(swFade);
-        cF.addView(text("Новые буквы (ls, ввод, вывод команд) проявляются плавно, а не сразу", 12, SUB, false));
-        cF.addView(text("Длительность", 14, SUB, false));
-        tvFade = text("160 мс", 14, SUB, false);
-        cF.addView(tvFade);
-        sbFade = new SeekBar(this);
-        sbFade.setMax(450);
-        cF.addView(sbFade);
+        swFade = sw(cF, R.string.fade);
+        desc(cF, R.string.fade_desc);
+        tvFade = row(cF, R.string.duration, false);
+        sbFade = seek(cF, 450);
 
         // ---- Фон Termux
         LinearLayout cB = card(root);
-        cB.addView(text("Фон Termux", 16, TEXT, false));
-        cB.addView(text("Картинка, видео или градиент под текстом терминала", 12, SUB, false));
+        head(cB, R.string.bg_title, R.string.bg_desc);
         rgBg = new RadioGroup(this);
         rgBg.setOrientation(RadioGroup.VERTICAL);
-        String[] modeNames = {"Выкл", "Картинка", "Видео", "Градиент"};
+        rgBg.setPadding(0, dp(8), 0, 0);
+        int[] modeNames = {R.string.mode_off, R.string.mode_img, R.string.mode_vid, R.string.mode_grad};
         for (int i = 0; i < 4; i++) {
             RadioButton rb = new RadioButton(this);
             rb.setId(View.generateViewId());
             rb.setTag(Integer.valueOf(i));
             rb.setText(modeNames[i]);
             rb.setTextColor(TEXT);
+            rb.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            rb.setMinHeight(dp(42));
+            rb.setButtonTintList(checkedTint(ACCENT, SUB));
             rbMode[i] = rb;
             rgBg.addView(rb);
         }
@@ -284,59 +407,43 @@ public class SettingsActivity extends Activity {
         tvBgFile = text("", 14, SUB, false);
         tvBgFile.setPadding(0, dp(8), 0, 0);
         fileBox.addView(tvBgFile);
-        btnBgPick = new Button(this);
-        btnBgPick.setText("Выбрать файл");
-        fileBox.addView(btnBgPick);
-        btnBgClear = new Button(this);
-        btnBgClear.setText("Убрать файл");
-        fileBox.addView(btnBgClear);
+        btnBgPick = btn(R.string.pick_img, 0);
+        btnBgClear = btn(R.string.remove_file, 1);
+        btnRow(fileBox, btnBgPick, btnBgClear);
 
         gradBox = new LinearLayout(this);
         gradBox.setOrientation(LinearLayout.VERTICAL);
         cB.addView(gradBox);
-        gradBox.addView(text("Цвет сверху слева и снизу справа", 14, SUB, false));
+        TextView gh = text(getString(R.string.grad_hint), 14, SUB, false);
+        gh.setPadding(0, dp(8), 0, 0);
+        gradBox.addView(gh);
         hexC1 = hexField("#141E30");
         hexC2 = hexField("#243B55");
         gradBox.addView(hexC1);
         gradBox.addView(hexC2);
 
-        tvDim = text("35%", 14, SUB, false);
-        tvDim.setPadding(0, dp(12), 0, 0);
-        cB.addView(text("Затемнение фона", 14, SUB, false));
-        cB.addView(tvDim);
-        sbDim = new SeekBar(this);
-        sbDim.setMax(100);
-        cB.addView(sbDim);
+        tvDim = row(cB, R.string.dim, false);
+        sbDim = seek(cB, 100);
 
         // ---- Заставка
         LinearLayout cSp = card(root);
-        swSplash = new Switch(this);
-        swSplash.setText("Заставка при запуске Termux");
-        swSplash.setTextColor(TEXT);
-        swSplash.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        cSp.addView(swSplash);
-        cSp.addView(text("Видео играет один раз при старте Termux и плавно исчезает. "
-                + "Новые сессии заставку не запускают. Тап по заставке пропускает её", 12, SUB, false));
-        swSplashSound = new Switch(this);
-        swSplashSound.setText("Со звуком");
-        swSplashSound.setTextColor(TEXT);
-        swSplashSound.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        swSplash = sw(cSp, R.string.splash);
+        desc(cSp, R.string.splash_desc);
+        swSplashSound = sw(cSp, R.string.splash_sound);
         swSplashSound.setPadding(0, dp(12), 0, 0);
-        cSp.addView(swSplashSound);
         tvSplashFile = text("", 14, SUB, false);
         tvSplashFile.setPadding(0, dp(8), 0, 0);
         cSp.addView(tvSplashFile);
-        btnSplashPick = new Button(this);
-        btnSplashPick.setText("Выбрать видео");
-        cSp.addView(btnSplashPick);
-        btnSplashClear = new Button(this);
-        btnSplashClear.setText("Убрать видео");
-        cSp.addView(btnSplashClear);
+        btnSplashPick = btn(R.string.pick_vid, 0);
+        btnSplashClear = btn(R.string.remove_video, 1);
+        btnRow(cSp, btnSplashPick, btnSplashClear);
 
-        LinearLayout c3 = card(root);
-        Button reset = new Button(this);
-        reset.setText("Сбросить все настройки");
-        c3.addView(reset);
+        // ---- Сброс
+        Button reset = btn(R.string.reset, 2);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(20);
+        root.addView(reset, rlp);
 
         setContentView(scroll);
 
@@ -366,13 +473,13 @@ public class SettingsActivity extends Activity {
         });
         sbOutline.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvOutline.setText(p + "%");
+                tvOutline.setText(pctS(p));
                 sp.edit().putInt(SettingsProvider.K_OUTLINE, p).apply();
             }
         });
         sbTrail.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvTrail.setText(p + "%");
+                tvTrail.setText(pctS(p));
                 sp.edit().putInt(SettingsProvider.K_TRAIL, p).apply();
             }
         });
@@ -384,7 +491,7 @@ public class SettingsActivity extends Activity {
         });
         sbScroll.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvScroll.setText(p + "%");
+                tvScroll.setText(pctS(p));
                 sp.edit().putInt(SettingsProvider.K_SCROLL_SPEED, p).apply();
             }
         });
@@ -397,13 +504,13 @@ public class SettingsActivity extends Activity {
         });
         sbPadX.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvPadX.setText(p + " dp");
+                tvPadX.setText(dpS(p));
                 sp.edit().putInt(SettingsProvider.K_PAD_X, p).apply();
             }
         });
         sbPadY.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvPadY.setText(p + " dp");
+                tvPadY.setText(dpS(p));
                 sp.edit().putInt(SettingsProvider.K_PAD_Y, p).apply();
             }
         });
@@ -415,13 +522,13 @@ public class SettingsActivity extends Activity {
         });
         sbGlowR.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvGlowR.setText(p + " dp");
+                tvGlowR.setText(dpS(p));
                 sp.edit().putInt(SettingsProvider.K_GLOW_RADIUS, p).apply();
             }
         });
         sbGlowI.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvGlowI.setText(p + "%");
+                tvGlowI.setText(pctS(p));
                 sp.edit().putInt(SettingsProvider.K_GLOW_INTENSITY, p).apply();
             }
         });
@@ -433,7 +540,7 @@ public class SettingsActivity extends Activity {
         });
         sbFade.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvFade.setText((p + 50) + " мс");
+                tvFade.setText(msS(p + 50));
                 sp.edit().putInt(SettingsProvider.K_FADE_MS, p + 50).apply();
             }
         });
@@ -461,7 +568,7 @@ public class SettingsActivity extends Activity {
         watchHex(hexC2, SettingsProvider.K_BG_C2);
         sbDim.setOnSeekBarChangeListener(new Seek() {
             void on(int p) {
-                tvDim.setText(p + "%");
+                tvDim.setText(pctS(p));
                 sp.edit().putInt(SettingsProvider.K_BG_DIM, p).apply();
             }
         });
@@ -509,18 +616,18 @@ public class SettingsActivity extends Activity {
             }
         });
 
-        reset.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle("Сбросить все настройки?")
-                .setMessage("Все значения вернутся к настройкам по умолчанию.")
-                .setPositiveButton("Сбросить", (d, w) -> {
+        reset.setOnClickListener(v -> new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                .setTitle(R.string.reset_title)
+                .setMessage(R.string.reset_msg)
+                .setPositiveButton(R.string.reset_ok, (d, w) -> {
                     sp.edit().clear().apply();
                     deleteMedia(SettingsProvider.F_IMG);
                     deleteMedia(SettingsProvider.F_VID);
                     deleteMedia(SettingsProvider.F_SPL);
                     load();
-                    Toast.makeText(this, "Настройки сброшены", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.toast_reset, Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show());
 
         load();
@@ -558,7 +665,7 @@ public class SettingsActivity extends Activity {
         swScroll.setChecked(smooth);
         sbScroll.setProgress(speed);
         sbScroll.setEnabled(smooth);
-        tvScroll.setText(speed + "%");
+        tvScroll.setText(pctS(speed));
 
         boolean padOn = sp.getBoolean(SettingsProvider.K_PAD_ON, SettingsProvider.D_PAD_ON);
         int padX = sp.getInt(SettingsProvider.K_PAD_X, SettingsProvider.D_PAD_X);
@@ -568,8 +675,8 @@ public class SettingsActivity extends Activity {
         sbPadY.setProgress(padY);
         sbPadX.setEnabled(padOn);
         sbPadY.setEnabled(padOn);
-        tvPadX.setText(padX + " dp");
-        tvPadY.setText(padY + " dp");
+        tvPadX.setText(dpS(padX));
+        tvPadY.setText(dpS(padY));
 
         boolean glowOn = sp.getBoolean(SettingsProvider.K_GLOW_ON, SettingsProvider.D_GLOW_ON);
         int glowR = sp.getInt(SettingsProvider.K_GLOW_RADIUS, SettingsProvider.D_GLOW_RADIUS);
@@ -579,15 +686,15 @@ public class SettingsActivity extends Activity {
         sbGlowI.setProgress(glowI);
         sbGlowR.setEnabled(glowOn);
         sbGlowI.setEnabled(glowOn);
-        tvGlowR.setText(glowR + " dp");
-        tvGlowI.setText(glowI + "%");
+        tvGlowR.setText(dpS(glowR));
+        tvGlowI.setText(pctS(glowI));
 
         boolean fadeOn = sp.getBoolean(SettingsProvider.K_FADE_ON, SettingsProvider.D_FADE_ON);
         int fadeMs = sp.getInt(SettingsProvider.K_FADE_MS, SettingsProvider.D_FADE_MS);
         swFade.setChecked(fadeOn);
         sbFade.setProgress(Math.max(0, fadeMs - 50));
         sbFade.setEnabled(fadeOn);
-        tvFade.setText(fadeMs + " мс");
+        tvFade.setText(msS(fadeMs));
 
         swTheme.setChecked(useTheme);
         Color.colorToHSV(color, hsv);
@@ -598,9 +705,9 @@ public class SettingsActivity extends Activity {
         swatchBg.setColor(c);
         hex.setText(String.format("#%06X", c & 0xFFFFFF));
         sbOutline.setProgress(outline);
-        tvOutline.setText(outline + "%");
+        tvOutline.setText(pctS(outline));
         sbTrail.setProgress(trail);
-        tvTrail.setText(trail + "%");
+        tvTrail.setText(pctS(trail));
         applyEnabled(useTheme);
 
         int bgMode = sp.getInt(SettingsProvider.K_BG_MODE, SettingsProvider.D_BG_MODE);
@@ -610,7 +717,7 @@ public class SettingsActivity extends Activity {
         hexC2.setText(String.format("#%06X", sp.getInt(SettingsProvider.K_BG_C2, SettingsProvider.D_BG_C2) & 0xFFFFFF));
         int dim = sp.getInt(SettingsProvider.K_BG_DIM, SettingsProvider.D_BG_DIM);
         sbDim.setProgress(dim);
-        tvDim.setText(dim + "%");
+        tvDim.setText(pctS(dim));
         swSplash.setChecked(sp.getBoolean(SettingsProvider.K_SPLASH_ON, SettingsProvider.D_SPLASH_ON));
         swSplashSound.setChecked(sp.getBoolean(SettingsProvider.K_SPLASH_SOUND, SettingsProvider.D_SPLASH_SOUND));
         updating = false;
@@ -618,16 +725,6 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------------------------------------------------------------- фон и заставка
-
-    private EditText hexField(String hint) {
-        EditText e = new EditText(this);
-        e.setSingleLine(true);
-        e.setTextColor(TEXT);
-        e.setHintTextColor(SUB);
-        e.setHint(hint);
-        e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(7)});
-        return e;
-    }
 
     private void watchHex(final EditText et, final String key) {
         et.addTextChangedListener(new TextWatcher() {
@@ -675,13 +772,12 @@ public class SettingsActivity extends Activity {
         sbDim.setEnabled(mode != 0);
         if (media) {
             boolean has = mediaFile(mode == 1 ? SettingsProvider.F_IMG : SettingsProvider.F_VID).exists();
-            String what = mode == 1 ? "Картинка" : "Видео";
-            tvBgFile.setText(has ? what + " выбрана" : "Файл не выбран");
-            btnBgPick.setText(mode == 1 ? "Выбрать картинку" : "Выбрать видео");
+            tvBgFile.setText(has ? (mode == 1 ? R.string.bg_img_picked : R.string.bg_vid_picked) : R.string.bg_none);
+            btnBgPick.setText(mode == 1 ? R.string.pick_img : R.string.pick_vid);
             btnBgClear.setEnabled(has);
         }
         boolean hasSplash = mediaFile(SettingsProvider.F_SPL).exists();
-        tvSplashFile.setText(hasSplash ? "Видео выбрано" : "Видео не выбрано");
+        tvSplashFile.setText(hasSplash ? R.string.splash_picked : R.string.splash_none);
         btnSplashClear.setEnabled(hasSplash);
     }
 
@@ -692,7 +788,7 @@ public class SettingsActivity extends Activity {
         try {
             startActivityForResult(i, req);
         } catch (Throwable t) {
-            Toast.makeText(this, "Нет приложения для выбора файла", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.toast_nopicker, Toast.LENGTH_LONG).show();
         }
     }
 
@@ -701,7 +797,7 @@ public class SettingsActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         final Uri uri = data.getData();
-        Toast.makeText(this, "Копирую файл…", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, R.string.toast_copying, Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             String err = null;
             try {
@@ -715,9 +811,9 @@ public class SettingsActivity extends Activity {
             runOnUiThread(() -> {
                 if (ferr == null) {
                     if (req != REQ_SPLASH) bumpBgVer();
-                    Toast.makeText(this, "Готово", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.toast_done, Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(this, "Ошибка: " + ferr, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, getString(R.string.toast_error, ferr), Toast.LENGTH_LONG).show();
                 }
                 refreshBgUi();
             });
@@ -728,7 +824,7 @@ public class SettingsActivity extends Activity {
         File tmp = mediaFile(name + ".tmp");
         try (InputStream in = getContentResolver().openInputStream(uri);
              FileOutputStream out = new FileOutputStream(tmp)) {
-            if (in == null) throw new IOException("не удалось открыть файл");
+            if (in == null) throw new IOException(getString(R.string.err_open));
             byte[] buf = new byte[65536];
             int n;
             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
@@ -741,7 +837,7 @@ public class SettingsActivity extends Activity {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         try (InputStream in = getContentResolver().openInputStream(uri)) {
-            if (in == null) throw new IOException("не удалось открыть файл");
+            if (in == null) throw new IOException(getString(R.string.err_open));
             BitmapFactory.decodeStream(in, null, o);
         }
         int sample = 1;
@@ -750,10 +846,10 @@ public class SettingsActivity extends Activity {
         o2.inSampleSize = sample;
         Bitmap bm;
         try (InputStream in = getContentResolver().openInputStream(uri)) {
-            if (in == null) throw new IOException("не удалось открыть файл");
+            if (in == null) throw new IOException(getString(R.string.err_open));
             bm = BitmapFactory.decodeStream(in, null, o2);
         }
-        if (bm == null) throw new IOException("не картинка");
+        if (bm == null) throw new IOException(getString(R.string.err_not_image));
         int rot = 0;
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             if (in != null) {
@@ -782,7 +878,7 @@ public class SettingsActivity extends Activity {
     private void replaceFile(File tmp, File dst) throws IOException {
         if (!tmp.renameTo(dst)) {
             dst.delete();
-            if (!tmp.renameTo(dst)) throw new IOException("не удалось сохранить файл");
+            if (!tmp.renameTo(dst)) throw new IOException(getString(R.string.err_save));
         }
     }
 }
