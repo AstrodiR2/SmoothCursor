@@ -69,6 +69,11 @@ final class Overlay {
 
     // ---------------------------------------------------------------- фон
 
+    // Нужен эффектам (Fx): когда свой фон включён, слой терминала прозрачный
+    static boolean isBgActive() {
+        return bgActive;
+    }
+
     // Перед render(): делаем фон по умолчанию прозрачным (только на время кадра)
     static void bgBefore(XC_MethodHook.MethodHookParam p) {
         if (!bgActive) return;

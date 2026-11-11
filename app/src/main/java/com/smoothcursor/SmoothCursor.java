@@ -52,6 +52,12 @@ public class SmoothCursor implements IXposedHookLoadPackage {
     private static boolean wasMoving = false;
     private static int lastCol, lastRow, lastStyle;
     private static long lastNs = 0;
+    private static long lastMoveNs = 0;
+
+    // Частые перемещения (автоповтор Backspace, быстрый набор): курсор не успевает
+    // доезжать за текстом, поэтому при коротком интервале анимацию ускоряем или отключаем.
+    private static final long SNAP_MS = 60;   // реже этого интервала: мгновенный прыжок
+    private static final long FAST_MS = 130;  // до этого интервала: анимация сжимается плавно
 
     // Плавный скролл: визуальное смещение в пикселях, затухает к нулю
     private static float scrollOff = 0f;
@@ -194,6 +200,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                     int sv = b.getInt("scroll_speed", 50);
                     boolean changed = ut != cfgUseTheme || c != cfgColor || o != cfgOutline || tr != cfgTrail
                             || ss != cfgSmoothScroll || sv != cfgScrollSpeed;
+                    if (Fx.setConfig(b)) changed = true;
                     cfgSmoothScroll = ss;
                     cfgScrollSpeed = sv;
                     cfgUseTheme = ut;
@@ -285,6 +292,7 @@ public class SmoothCursor implements IXposedHookLoadPackage {
 
         int col = (Integer) XposedHelpers.callMethod(emu, "getCursorCol");
         int row = (Integer) XposedHelpers.callMethod(emu, "getCursorRow") - topRow;
+        int extRow = row + topRow; // строка в координатах буфера, не зависит от прокрутки
 
         int style = 0;
         try {
@@ -302,12 +310,35 @@ public class SmoothCursor implements IXposedHookLoadPackage {
         long now = System.nanoTime();
         float dtMs = 0f;
 
+        int base = (cfgUseTheme ? cursorColor(emu) : cfgColor) | 0xFF000000;
+        Fx.track(emu, extRow, col, now);
+
         if (!inited) {
             for (int i = 0; i < 4; i++) { cx[i] = tx[i]; cy[i] = ty[i]; }
             inited = true;
             lastCol = col; lastRow = row; lastStyle = style;
         } else if (col != lastCol || row != lastRow || style != lastStyle) {
+            float ocx = (cx[0] + cx[1] + cx[2] + cx[3]) / 4f;
+            float ocy = (cy[0] + cy[1] + cy[2] + cy[3]) / 4f;
             retarget(tx, ty, cellW, cellH);
+
+            long gap = (now - lastMoveNs) / 1_000_000L;
+            lastMoveNs = now;
+            if (gap < SNAP_MS) {
+                // Автоповтор: курсор сразу встаёт на место, иначе копится отставание
+                for (int i = 0; i < 4; i++) { cx[i] = tx[i]; cy[i] = ty[i]; }
+            } else if (gap < FAST_MS) {
+                float k = 0.15f + 0.85f * (gap - SNAP_MS) / (float) (FAST_MS - SNAP_MS);
+                for (int i = 0; i < 4; i++) tau[i] *= k;
+            }
+
+            if (Fx.partOn) {
+                float ncx = (tx[0] + tx[1] + tx[2] + tx[3]) / 4f;
+                float ncy = (ty[0] + ty[1] + ty[2] + ty[3]) / 4f;
+                Fx.spawn(ncx * cellW, yOff + ncy * cellH, (ncx - ocx) * cellW, (ncy - ocy) * cellH,
+                        base, cellH, gap);
+            }
+
             lastCol = col; lastRow = row; lastStyle = style;
             dtMs = wasMoving ? Math.min((now - lastNs) / 1_000_000f, 50f) : 0f;
         } else {
@@ -326,6 +357,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
 
         wasMoving = moving;
 
+        // Анимация появления набранных символов: под курсором
+        boolean fxLive = Fx.drawCells(canvas, renderer, emu, topRow, cellW, cellH, yOff, base, now);
+
         if (nativeVisible) {
             path.reset();
             for (int i = 0; i < 4; i++) {
@@ -334,8 +368,6 @@ public class SmoothCursor implements IXposedHookLoadPackage {
                 if (i == 0) path.moveTo(px, py); else path.lineTo(px, py);
             }
             path.close();
-
-            int base = (cfgUseTheme ? cursorColor(emu) : cfgColor) | 0xFF000000;
 
             fillPaint.setColor(base);
             fillPaint.setAlpha(CURSOR_ALPHA);
@@ -350,7 +382,9 @@ public class SmoothCursor implements IXposedHookLoadPackage {
             }
         }
 
-        if (moving) {
+        boolean partLive = Fx.drawParticles(canvas, now, cellH);
+
+        if (moving || fxLive || partLive) {
             View v = viewRef.get();
             if (v != null) v.postInvalidateOnAnimation();
         }

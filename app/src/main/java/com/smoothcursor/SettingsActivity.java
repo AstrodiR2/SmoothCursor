@@ -18,6 +18,7 @@ import android.text.InputFilter;
 import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -63,8 +64,46 @@ public class SettingsActivity extends Activity {
     private Switch swSplash, swSplashSound;
     private Button btnSplashPick, btnSplashClear;
 
+    // Анимация ввода и частицы
+    private Switch swFade, swPart;
+    private RadioGroup rgFade, rgPart;
+    private final RadioButton[] rbFade = new RadioButton[5];
+    private final RadioButton[] rbPart = new RadioButton[5];
+    private LinearLayout fadeBox, partBox;
+    private SeekBar sbFadeDur, sbPartAmount;
+    private TextView tvFadeDur, tvPartAmount;
+
     private boolean updating = false;
     private final float[] hsv = new float[3];
+
+    private RadioGroup radios(LinearLayout parent, String[] names, RadioButton[] out) {
+        RadioGroup g = new RadioGroup(this);
+        g.setOrientation(RadioGroup.VERTICAL);
+        for (int i = 0; i < names.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setId(View.generateViewId());
+            rb.setTag(Integer.valueOf(i));
+            rb.setText(names[i]);
+            rb.setTextColor(TEXT);
+            out[i] = rb;
+            g.addView(rb);
+        }
+        parent.addView(g);
+        return g;
+    }
+
+    private void enableAll(View v, boolean en) {
+        v.setEnabled(en);
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) enableAll(g.getChildAt(i), en);
+        }
+    }
+
+    private void setBoxEnabled(LinearLayout box, boolean en) {
+        enableAll(box, en);
+        box.setAlpha(en ? 1f : 0.4f);
+    }
 
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
@@ -200,6 +239,49 @@ public class SettingsActivity extends Activity {
         sbScroll.setMax(100);
         cS.addView(sbScroll);
 
+        // ---- Анимация ввода
+        LinearLayout cF = card(root);
+        swFade = new Switch(this);
+        swFade.setText("Анимация ввода");
+        swFade.setTextColor(TEXT);
+        swFade.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        cF.addView(swFade);
+        cF.addView(text("Каждый набранный символ появляется с эффектом", 12, SUB, false));
+        fadeBox = new LinearLayout(this);
+        fadeBox.setOrientation(LinearLayout.VERTICAL);
+        cF.addView(fadeBox);
+        rgFade = radios(fadeBox, new String[]{"Проявление", "Выезд снизу", "Pop (увеличение)",
+                "Свечение", "Шторка слева направо"}, rbFade);
+        TextView tvFadeTitle = text("Длительность", 14, SUB, false);
+        tvFadeTitle.setPadding(0, dp(12), 0, 0);
+        fadeBox.addView(tvFadeTitle);
+        tvFadeDur = text("120 мс", 14, SUB, false);
+        fadeBox.addView(tvFadeDur);
+        sbFadeDur = new SeekBar(this);
+        sbFadeDur.setMax(250); // 50..300 мс
+        fadeBox.addView(sbFadeDur);
+
+        // ---- Частицы
+        LinearLayout cP = card(root);
+        swPart = new Switch(this);
+        swPart.setText("Частицы от курсора");
+        swPart.setTextColor(TEXT);
+        swPart.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        cP.addView(swPart);
+        cP.addView(text("Разлетаются при наборе и движении курсора", 12, SUB, false));
+        partBox = new LinearLayout(this);
+        partBox.setOrientation(LinearLayout.VERTICAL);
+        cP.addView(partBox);
+        rgPart = radios(partBox, new String[]{"Искры", "Дым", "Конфетти", "Звёзды", "Пузыри"}, rbPart);
+        TextView tvPartTitle = text("Количество", 14, SUB, false);
+        tvPartTitle.setPadding(0, dp(12), 0, 0);
+        partBox.addView(tvPartTitle);
+        tvPartAmount = text("50%", 14, SUB, false);
+        partBox.addView(tvPartAmount);
+        sbPartAmount = new SeekBar(this);
+        sbPartAmount.setMax(100);
+        partBox.addView(sbPartAmount);
+
         // ---- Фон Termux
         LinearLayout cB = card(root);
         cB.addView(text("Фон Termux", 16, TEXT, false));
@@ -329,6 +411,43 @@ public class SettingsActivity extends Activity {
             }
         });
 
+        swFade.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_FADE_ON, checked).apply();
+            setBoxEnabled(fadeBox, checked);
+        });
+        rgFade.setOnCheckedChangeListener((g, id) -> {
+            if (updating) return;
+            View rb = g.findViewById(id);
+            if (rb == null) return;
+            sp.edit().putInt(SettingsProvider.K_FADE_STYLE, (Integer) rb.getTag()).apply();
+        });
+        sbFadeDur.setOnSeekBarChangeListener(new Seek() {
+            void on(int p) {
+                int ms = 50 + p;
+                tvFadeDur.setText(ms + " мс");
+                sp.edit().putInt(SettingsProvider.K_FADE_DUR, ms).apply();
+            }
+        });
+
+        swPart.setOnCheckedChangeListener((v, checked) -> {
+            if (updating) return;
+            sp.edit().putBoolean(SettingsProvider.K_PART_ON, checked).apply();
+            setBoxEnabled(partBox, checked);
+        });
+        rgPart.setOnCheckedChangeListener((g, id) -> {
+            if (updating) return;
+            View rb = g.findViewById(id);
+            if (rb == null) return;
+            sp.edit().putInt(SettingsProvider.K_PART_STYLE, (Integer) rb.getTag()).apply();
+        });
+        sbPartAmount.setOnSeekBarChangeListener(new Seek() {
+            void on(int p) {
+                tvPartAmount.setText(p + "%");
+                sp.edit().putInt(SettingsProvider.K_PART_AMOUNT, p).apply();
+            }
+        });
+
         rgBg.setOnCheckedChangeListener((g, id) -> {
             if (updating) return;
             View rb = g.findViewById(id);
@@ -450,6 +569,26 @@ public class SettingsActivity extends Activity {
         sbScroll.setProgress(speed);
         sbScroll.setEnabled(smooth);
         tvScroll.setText(speed + "%");
+
+        boolean fadeOn = sp.getBoolean(SettingsProvider.K_FADE_ON, SettingsProvider.D_FADE_ON);
+        int fadeStyle = sp.getInt(SettingsProvider.K_FADE_STYLE, SettingsProvider.D_FADE_STYLE);
+        if (fadeStyle < 0 || fadeStyle > 4) fadeStyle = 0;
+        int fadeDur = Math.max(50, Math.min(300, sp.getInt(SettingsProvider.K_FADE_DUR, SettingsProvider.D_FADE_DUR)));
+        swFade.setChecked(fadeOn);
+        rgFade.check(rbFade[fadeStyle].getId());
+        sbFadeDur.setProgress(fadeDur - 50);
+        tvFadeDur.setText(fadeDur + " мс");
+        setBoxEnabled(fadeBox, fadeOn);
+
+        boolean partOn = sp.getBoolean(SettingsProvider.K_PART_ON, SettingsProvider.D_PART_ON);
+        int partStyle = sp.getInt(SettingsProvider.K_PART_STYLE, SettingsProvider.D_PART_STYLE);
+        if (partStyle < 0 || partStyle > 4) partStyle = 0;
+        int partAmount = Math.max(0, Math.min(100, sp.getInt(SettingsProvider.K_PART_AMOUNT, SettingsProvider.D_PART_AMOUNT)));
+        swPart.setChecked(partOn);
+        rgPart.check(rbPart[partStyle].getId());
+        sbPartAmount.setProgress(partAmount);
+        tvPartAmount.setText(partAmount + "%");
+        setBoxEnabled(partBox, partOn);
 
         swTheme.setChecked(useTheme);
         Color.colorToHSV(color, hsv);

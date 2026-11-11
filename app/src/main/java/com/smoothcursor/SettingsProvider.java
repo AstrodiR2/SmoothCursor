@@ -31,6 +31,22 @@ public class SettingsProvider extends ContentProvider {
     public static final String K_SPLASH_ON = "splash_on";
     public static final String K_SPLASH_SOUND = "splash_sound";
 
+    // Анимация появления набранных символов: стиль 0 проявление, 1 выезд, 2 pop, 3 свечение, 4 шторка
+    public static final String K_FADE_ON = "fade_on";
+    public static final String K_FADE_STYLE = "fade_style";
+    public static final String K_FADE_DUR = "fade_dur";
+    // Частицы от курсора: стиль 0 искры, 1 дым, 2 конфетти, 3 звёзды, 4 пузыри
+    public static final String K_PART_ON = "part_on";
+    public static final String K_PART_STYLE = "part_style";
+    public static final String K_PART_AMOUNT = "part_amount";
+
+    public static final boolean D_FADE_ON = false;
+    public static final int D_FADE_STYLE = 0;
+    public static final int D_FADE_DUR = 120;
+    public static final boolean D_PART_ON = false;
+    public static final int D_PART_STYLE = 0;
+    public static final int D_PART_AMOUNT = 50;
+
     public static final boolean D_USE_THEME = true;
     public static final int D_COLOR = 0xFFFFFFFF;
     public static final int D_OUTLINE = 0;
@@ -66,6 +82,12 @@ public class SettingsProvider extends ContentProvider {
         b.putInt(K_TRAIL, sp.getInt(K_TRAIL, D_TRAIL));
         b.putBoolean(K_SMOOTH_SCROLL, sp.getBoolean(K_SMOOTH_SCROLL, D_SMOOTH_SCROLL));
         b.putInt(K_SCROLL_SPEED, sp.getInt(K_SCROLL_SPEED, D_SCROLL_SPEED));
+        b.putBoolean(K_FADE_ON, sp.getBoolean(K_FADE_ON, D_FADE_ON));
+        b.putInt(K_FADE_STYLE, sp.getInt(K_FADE_STYLE, D_FADE_STYLE));
+        b.putInt(K_FADE_DUR, sp.getInt(K_FADE_DUR, D_FADE_DUR));
+        b.putBoolean(K_PART_ON, sp.getBoolean(K_PART_ON, D_PART_ON));
+        b.putInt(K_PART_STYLE, sp.getInt(K_PART_STYLE, D_PART_STYLE));
+        b.putInt(K_PART_AMOUNT, sp.getInt(K_PART_AMOUNT, D_PART_AMOUNT));
         b.putInt(K_BG_MODE, sp.getInt(K_BG_MODE, D_BG_MODE));
         b.putInt(K_BG_DIM, sp.getInt(K_BG_DIM, D_BG_DIM));
         b.putInt(K_BG_C1, sp.getInt(K_BG_C1, D_BG_C1));
